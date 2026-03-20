@@ -70,8 +70,9 @@ class EmailService {
                 from: `"Lil Sculpr Clay Academy" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
                 to: toEmail,
                 replyTo: this.constants.EMAIL_SUPPORT,
-                subject: 'Republic Day Special Workshop - Registration Confirmed!',
+                subject: `${data.carnivalName || 'Special Workshop'} - Registration Confirmed!`,
                 html: this.generateRegistrationEmailHTML({
+                    carnivalName: data.carnivalName,
                     parentName,
                     childName,
                     batch,
@@ -122,7 +123,7 @@ generateRegistrationEmailHTML(data) {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Republic Day Special Workshop - Registration Confirmed!</title>
+            <title>${data.carnivalName || 'Special Workshop'} - Registration Confirmed!</title>
             <style>
                 /* Reset and Base Styles */
                 * {
@@ -529,7 +530,7 @@ generateRegistrationEmailHTML(data) {
             <div class="email-container">
                 <!-- Header -->
                 <div class="header">
-                    <h1>Republic Day Special Workshop</h1>
+                    <h1>${data.carnivalName || 'Special Workshop'}</h1>
                     <p>Registration Confirmed! 🎉</p>
                 </div>
                 
@@ -538,7 +539,7 @@ generateRegistrationEmailHTML(data) {
                     <!-- Greeting -->
                     <div class="greeting">
                         <p>Dear <strong>${data.parentName}</strong>,</p>
-                        <p>Thank you for registering <strong>${data.childName}</strong> for our Republic Day Special Workshop! We're excited to have your child join us for a creative adventure.</p>
+                        <p>Thank you for registering <strong>${data.childName}</strong> for our ${data.carnivalName || 'Special Workshop'}! We're excited to have your child join us for a creative adventure.</p>
                     </div>
                     
                     <!-- Confirmation Card -->
