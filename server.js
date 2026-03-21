@@ -9,13 +9,13 @@ const morgan = require('morgan');
 // Load environment variables
 dotenv.config();
 console.log('DEBUG: Mongo URI loaded:', process.env.MONGO_URI ? 'YES (First 20 chars: ' + process.env.MONGO_URI.substring(0, 20) + '...)' : 'NO (Undefined)');
-
+   
 // Import routes
 const registrationRoutes = require("./routes/registration.routes");
 const specialCourseRoutes = require("./routes/specialCourse.routes");
 
-const app = express();
-
+const app = express(); 
+ 
 // --- Security Middleware ---
 app.use(helmet()); // Security headers
 app.use(morgan('dev')); // Request logging

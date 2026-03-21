@@ -105,7 +105,7 @@ class EmailService {
             };
         }
     }
-
+   
 generateRegistrationEmailHTML(data) {
     const currentYear = new Date().getFullYear();
     const { 

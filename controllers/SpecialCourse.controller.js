@@ -12,10 +12,11 @@ const razorpay = new Razorpay({
 });
 
 // ==================== CONSTANTS ====================
-const BATCH_CAPACITY = 20;
+const BATCH_CAPACITY = 10;
 const MAX_PENDING_MINUTES = 15;
 const DELETE_PENDING_AFTER_MINUTES = 10; // Delete pending registrations after 10 minutes
 const CLEANUP_INTERVAL_MINUTES = 5; // Run cleanup every 5 minutes
+const WORKSHOP_FEE = 499; // Default workshop fee for statistics
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -1002,7 +1003,12 @@ exports.verifyPayment = async (req, res) => {
         }
 
         // Calculate amount dynamically
-        const amount = registration.materialType ? 499 : 299;
+        let amount = 299;
+        if (registration.carnivalName.includes('Summer')) {
+            amount = 2999;
+        } else {
+            amount = registration.materialType ? 499 : 299;
+        }
         console.log(`💰 Final amount verified: ₹${amount}`);
 
         // --- FETCH ACTUAL PAYMENT DETAILS FROM RAZORPAY ---
