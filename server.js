@@ -13,9 +13,10 @@ console.log('DEBUG: Mongo URI loaded:', process.env.MONGO_URI ? 'YES (First 20 c
 // Import routes
 const registrationRoutes = require("./routes/registration.routes");
 const specialCourseRoutes = require("./routes/specialCourse.routes");
+const freeWorkshopRoutes = require("./routes/freeWorkshop.routes");
 
 const app = express(); 
- 
+   
 // --- Security Middleware ---
 app.use(helmet()); // Security headers
 app.use(morgan('dev')); // Request logging
@@ -162,6 +163,7 @@ app.get('/api/health', (req, res) => {
 // --- API Routes ---   
 app.use("/api/registrations", registrationRoutes);
 app.use("/api/special-course", specialCourseRoutes);
+app.use("/api/free-workshop", freeWorkshopRoutes);
 
 // --- Static File Handling ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
