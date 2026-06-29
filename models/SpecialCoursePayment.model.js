@@ -66,7 +66,6 @@ const SpecialCoursePaymentSchema = new mongoose.Schema({
 });
 
 SpecialCoursePaymentSchema.index({ registrationId: 1 });
-SpecialCoursePaymentSchema.index({ razorpay_payment_id: 1 }, { unique: true });
 SpecialCoursePaymentSchema.index({ status: 1 });
 SpecialCoursePaymentSchema.index({ created_at: 1 });
 

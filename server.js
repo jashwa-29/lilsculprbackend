@@ -14,11 +14,14 @@ console.log('DEBUG: Mongo URI loaded:', process.env.MONGO_URI ? 'YES (First 20 c
 const registrationRoutes = require("./routes/registration.routes");
 const specialCourseRoutes = require("./routes/specialCourse.routes");
 const freeWorkshopRoutes = require("./routes/freeWorkshop.routes");
-
-const app = express(); 
-   
+const enrollmentRoutes = require("./routes/enrollment.routes");
+  
+const app = express();  
+            
 // --- Security Middleware ---
-app.use(helmet()); // Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+})); // Security headers
 app.use(morgan('dev')); // Request logging
 
 // --- CORS Configuration ---   
@@ -51,6 +54,9 @@ app.use(cors(corsOptions));
 // --- Body Parser Middleware ---
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// --- Serve uploaded student photos ---
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // --- MongoDB Connection with Retry Logic ---
 const connectDB = async () => {
@@ -164,6 +170,7 @@ app.get('/api/health', (req, res) => {
 app.use("/api/registrations", registrationRoutes);
 app.use("/api/special-course", specialCourseRoutes);
 app.use("/api/free-workshop", freeWorkshopRoutes);
+app.use("/api/enrollment", enrollmentRoutes);
 
 // --- Static File Handling ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

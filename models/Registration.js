@@ -210,9 +210,6 @@ RegistrationSchema.statics.getLastRegistrationNumber = async function() {
 };
 
 // Index for better performance
-RegistrationSchema.index({ registrationNo: 1 });
 RegistrationSchema.index({ createdAt: -1 });
-RegistrationSchema.index({ status: 1 });
-RegistrationSchema.index({ 'paymentDetails.paymentId': 1 });
 
 module.exports = mongoose.model("Registration", RegistrationSchema);
