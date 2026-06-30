@@ -85,10 +85,13 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ success: false, error: 'classType is required' });
     }
 
-    let amount = classType === 'offline' ? 2500 : 2200;
-    if (kitOptIn) {
-      amount += 2000;
-    }
+    // 🔴 TEST MODE: Amount set to ₹1 for live payment testing
+    // To restore, comment the line below and uncomment the original logic
+    let amount = 1;
+    // let amount = classType === 'offline' ? 2500 : 2200;
+    // if (kitOptIn) {
+    //   amount += 2000;
+    // }
 
     const options = {
       amount: amount * 100, // amount in smallest currency unit (paise)
