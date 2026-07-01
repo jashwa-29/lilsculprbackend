@@ -64,8 +64,8 @@ const studentSchema = new mongoose.Schema({
     default: false
   },
   photoUrl: {
-    type: String, // Path to uploaded file
-    required: true
+    type: String, // Path to uploaded file or Cloudinary URL
+    default: ''
   },
   paymentStatus: {
     type: String,

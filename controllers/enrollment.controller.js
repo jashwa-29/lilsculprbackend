@@ -183,6 +183,67 @@ exports.submitEnrollment = async (req, res) => {
 };
 
 /**
+ * POST /api/enrollment/manual
+ * Admin-only: Manually enroll a student with offline payment (no Razorpay)
+ */
+exports.manualEnrollment = async (req, res) => {
+  try {
+    const {
+      childName, childAge, childClass, schoolName,
+      parentName, contact1, contact2, email,
+      classType, dayId, time, slotKey,
+      kitOptIn, amountPaid, offlinePaymentRef
+    } = req.body;
+
+    // Basic validation
+    if (!childName || !parentName || !contact1 || !classType || !dayId || !time || !slotKey) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    // Photo is optional for manual entry (admin may not have it)
+    let photoUrl = '';
+    if (req.file) {
+      photoUrl = `/uploads/${req.file.filename}`;
+    }
+
+    const enrollmentId = await generateEnrollmentId();
+
+    const student = new Student({
+      enrollmentId,
+      childName,
+      childAge: childAge || '—',
+      childClass: childClass || '—',
+      schoolName: schoolName || '—',
+      parentName,
+      contact1,
+      contact2: contact2 || '—',
+      email: email || '',
+      classType,
+      dayId,
+      time,
+      slotKey,
+      kitOptIn: kitOptIn === 'true' || kitOptIn === true,
+      photoUrl,
+      paymentStatus: 'Completed',
+      razorpayOrderId: null,
+      razorpayPaymentId: offlinePaymentRef ? `OFFLINE-${offlinePaymentRef}` : `OFFLINE-${Date.now()}`,
+      amountPaid: Number(amountPaid) || 0,
+      status: 'active'
+    });
+
+    await student.save();
+
+    // Send welcome email if email provided
+    if (email) sendWelcomeEmail(student);
+
+    res.status(201).json({ success: true, student });
+  } catch (error) {
+    console.error('Manual Enrollment Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to save manual enrollment: ' + error.message });
+  }
+};
+
+/**
  * GET /api/enrollment/students
  * Fetch all students
  */

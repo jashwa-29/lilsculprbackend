@@ -9,6 +9,9 @@ router.post('/create-order', enrollmentController.createOrder);
 // Submit form data with uploaded photo
 router.post('/submit', upload.single('photo'), enrollmentController.submitEnrollment);
 
+// Admin: Manual enrollment (offline payment, no Razorpay)
+router.post('/manual', upload.single('photo'), enrollmentController.manualEnrollment);
+
 // Admin: Get all students
 router.get('/students', enrollmentController.getStudents);
 

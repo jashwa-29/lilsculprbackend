@@ -47,7 +47,7 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-
+ 
 // Enable CORS for all routes including preflight
 app.use(cors(corsOptions));
 
