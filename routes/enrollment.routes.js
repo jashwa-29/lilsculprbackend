@@ -16,7 +16,10 @@ router.post('/manual', upload.single('photo'), enrollmentController.manualEnroll
 router.get('/students', enrollmentController.getStudents);
 
 // Admin: Update student status
-router.put('/students/:id', enrollmentController.updateStudentStatus);
+router.put('/students/:id', enrollmentController.updateStudent);
+
+// Admin: Update student level
+router.put('/students/:id/level', enrollmentController.updateStudentLevel);
 
 // Admin: Delete student
 router.delete('/students/:id', enrollmentController.deleteStudent);
@@ -29,6 +32,19 @@ router.post('/students/:id/fees', enrollmentController.upsertStudentFee);
 
 // Fee Tracking: Revenue overview across all students
 router.get('/fees/overview', enrollmentController.getFeesOverview);
+
+// Fee Tracking: Get all fee records for a specific month and year
+router.get('/fees/month/:month/:year', enrollmentController.getAllFeesForMonth);
+
+// Attendance Tracking
+router.get('/attendance', enrollmentController.getAttendance);
+router.post('/attendance', enrollmentController.updateAttendance);
+
+// Compensation Tracking (Admin)
+router.get('/compensations', enrollmentController.getCompensations);
+router.get('/compensations/admin', enrollmentController.getAllCompensationsAdmin);
+router.get('/compensations/stats', enrollmentController.getCompensationStats);
+router.put('/compensations/:id', enrollmentController.updateCompensationStatus);
 
 // Config: Get batches (with dynamic slot counts)
 router.get('/batches', enrollmentController.getBatches);

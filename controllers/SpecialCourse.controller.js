@@ -76,11 +76,12 @@ const checkDuplicateRegistration = async (carnivalName, email, phone, childName,
         console.log(`🔍 Checking duplicate registration for: ${childName} on ${selectedDate} for ${carnivalName}`);
         
         const queryDate = parseDateForQuery(selectedDate);
+        const trimmedName = childName.trim();
         
         const existing = await SpecialCourse.findOne({
             carnivalName: carnivalName,
             selectedDate: queryDate,
-            childName: { $regex: new RegExp(`^${childName.trim()}$`, 'i') },
+            childName: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
             status: 'registered',
             payment_status: 'paid',
             $or: [
@@ -1035,30 +1036,51 @@ exports.verifyPayment = async (req, res) => {
             }
         }
         
-        // Update registration with payment info
-        registration.payment = {
-            razorpay_payment_id: razorpay_payment_id,
-            razorpay_order_id: razorpay_order_id || registration.payment?.razorpay_order_id || 'direct_payment',
-            razorpay_signature: razorpay_signature || 'direct_payment',
-            amount: amount,
-            currency: "INR",
-            status: 'paid',
-            payment_date: now,
-            method: actualPaymentMethod,
-            bank: paymentInfo.bank || paymentDetails.bank || '',
-            wallet: paymentInfo.wallet || paymentDetails.wallet || '',
-            vpa: paymentInfo.vpa || paymentDetails.vpa || ''
-        };
-        
-        registration.status = 'registered';
-        registration.payment_status = 'paid';
-        registration.payment_confirmed_at = now;
-        registration.updatedAt = now;
+        // --- ATOMIC UPDATE (Race Condition Fix) ---
+        // Use findOneAndUpdate with status condition to ensure only ONE concurrent
+        // payment verification request can successfully mark this as 'registered'.
+        // If two requests arrive simultaneously, only one will match { status: 'pending_payment' }.
+        const updatedRegistration = await SpecialCourse.findOneAndUpdate(
+            {
+                registrationId: registrationId,
+                status: 'pending_payment' // Guard: only update if still pending
+            },
+            {
+                $set: {
+                    status: 'registered',
+                    payment_status: 'paid',
+                    payment_confirmed_at: now,
+                    payment: {
+                        razorpay_payment_id: razorpay_payment_id,
+                        razorpay_order_id: razorpay_order_id || registration.payment?.razorpay_order_id || 'direct_payment',
+                        razorpay_signature: razorpay_signature || 'direct_payment',
+                        amount: amount,
+                        currency: "INR",
+                        status: 'paid',
+                        payment_date: now,
+                        method: actualPaymentMethod,
+                        bank: paymentInfo.bank || paymentDetails.bank || '',
+                        wallet: paymentInfo.wallet || paymentDetails.wallet || '',
+                        vpa: paymentInfo.vpa || paymentDetails.vpa || ''
+                    }
+                }
+            },
+            { new: true }
+        );
 
-        await registration.save();
+        // If updatedRegistration is null, the status guard failed — another request already processed it
+        if (!updatedRegistration) {
+            console.log(`⚠️ Payment for ${registrationId} was already processed by another request (race condition prevented).`);
+            return res.status(200).json({
+                success: true,
+                message: 'Payment already processed',
+                data: { registrationId, emailSent: true }
+            });
+        }
 
         console.log(`✅ Payment stored successfully for: ${registrationId}`);
-        console.log(`📊 Status updated to: ${registration.status}`);
+        console.log(`📊 Status updated to: ${updatedRegistration.status}`);
+
 
         // Create payment log
         try {

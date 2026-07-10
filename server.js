@@ -15,9 +15,18 @@ const registrationRoutes = require("./routes/registration.routes");
 const specialCourseRoutes = require("./routes/specialCourse.routes");
 const freeWorkshopRoutes = require("./routes/freeWorkshop.routes");
 const enrollmentRoutes = require("./routes/enrollment.routes");
+const authRoutes = require("./routes/auth.routes");
+const batchRoutes = require('./routes/batch.routes');
+const waitlistRoutes = require('./routes/waitlist.routes');
+const birthdayRoutes = require('./routes/birthday.routes');
+const portalRoutes = require('./routes/portal.routes');
+const studentRoutes = require('./routes/student.routes');
   
 const app = express();  
-            
+             
+// Initialize cron jobs
+require('./services/cron.service');
+
 // --- Security Middleware ---
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -26,12 +35,14 @@ app.use(morgan('dev')); // Request logging
 
 // --- CORS Configuration ---   
 const allowedOrigins = [
-  'http://localhost:5173',
+  'http://localhost:5173', 
   'http://localhost:3000',
+  'http://localhost:3001',
   'https://lilsculpr.com', // Your production domain
   'https://www.lilsculpr.com',
   'http://127.0.0.1:5502',
-  'http://127.0.0.1:5500'
+  'http://127.0.0.1:5500',
+  'http://127.0.0.1:5501'
 ]; 
 
 const corsOptions = {
@@ -167,10 +178,16 @@ app.get('/api/health', (req, res) => {
 });
 
 // --- API Routes ---   
+app.use("/api/auth", authRoutes);
 app.use("/api/registrations", registrationRoutes);
 app.use("/api/special-course", specialCourseRoutes);
 app.use("/api/free-workshop", freeWorkshopRoutes);
 app.use("/api/enrollment", enrollmentRoutes);
+app.use("/api/portal", portalRoutes);
+app.use("/api/batches", batchRoutes);
+app.use("/api/waitlist", waitlistRoutes);
+app.use("/api/birthdays", birthdayRoutes);
+app.use("/api/students", studentRoutes);
 
 // --- Static File Handling ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

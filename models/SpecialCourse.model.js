@@ -196,8 +196,9 @@ SpecialCourseSchema.methods.isRegistrationComplete = function() {
 SpecialCourseSchema.pre('save', function(next) {
     const now = new Date();
     
-    // Auto-expire if payment time has passed
+    // Auto-expire if payment time has passed, ONLY if it hasn't been explicitly changed
     if (this.status === 'pending_payment' && 
+        !this.isModified('status') && // Only expire if the controller isn't trying to change the status
         this.payment_expires_at && 
         now > this.payment_expires_at) {
         this.status = 'expired';
