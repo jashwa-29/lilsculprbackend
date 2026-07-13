@@ -21,6 +21,7 @@ const waitlistRoutes = require('./routes/waitlist.routes');
 const birthdayRoutes = require('./routes/birthday.routes');
 const portalRoutes = require('./routes/portal.routes');
 const studentRoutes = require('./routes/student.routes');
+const migrationRoutes = require('./routes/migrationRoutes');
   
 const app = express();  
              
@@ -192,6 +193,7 @@ app.use("/api/batches", batchRoutes);
 app.use("/api/waitlist", waitlistRoutes);
 app.use("/api/birthdays", birthdayRoutes);
 app.use("/api/students", studentRoutes);
+app.use("/api", migrationRoutes);
 
 // --- Static File Handling ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
