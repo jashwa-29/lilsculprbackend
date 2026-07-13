@@ -83,6 +83,10 @@ const connectDB = async () => {
     await mongoose.connect(dbUri);
     console.log('✅ MongoDB Connected successfully');
     
+    // Seed admin user
+    const seedAdmin = require('./seed/seedAdmin');
+    await seedAdmin();
+    
     // Listen to connection events
     mongoose.connection.on('error', (err) => {
       console.error('❌ MongoDB connection error:', err);
