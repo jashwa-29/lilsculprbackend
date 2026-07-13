@@ -295,3 +295,80 @@ exports.addStudentsToBatch = async (req, res) => {
     });
   }
 };
+
+/**
+ * DELETE /api/batches/all
+ * Delete all batches (Admin only)
+ */
+exports.deleteAllBatches = async (req, res) => {
+  try {
+    await Batch.deleteMany({});
+    res.json({ success: true, message: 'All batches deleted successfully' });
+  } catch (error) {
+    console.error('Delete All Batches Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete all batches' });
+  }
+};
+
+/**
+ * DELETE /api/batches/:id
+ * Delete a specific batch
+ */
+exports.deleteBatch = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const batch = await Batch.findByIdAndDelete(id);
+    if (!batch) {
+      return res.status(404).json({ success: false, error: 'Batch not found' });
+    }
+    res.json({ success: true, message: 'Batch deleted successfully' });
+  } catch (error) {
+    console.error('Delete Batch Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete batch' });
+  }
+};
+
+/**
+ * PUT /api/batches/:id
+ * Edit a specific batch
+ */
+exports.editBatch = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const batch = await Batch.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
+    if (!batch) {
+      return res.status(404).json({ success: false, error: 'Batch not found' });
+    }
+    res.json({ success: true, message: 'Batch updated successfully', batch });
+  } catch (error) {
+    console.error('Edit Batch Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update batch' });
+  }
+};
+
+/**
+ * POST /api/batches/seed
+ * Run the seedBatches script
+ */
+exports.seedBatchesHandler = async (req, res) => {
+  try {
+    const seedBatches = require('../seed/seedBatches');
+    // Using an interceptor to capture console logs from the seed script
+    const originalLog = console.log;
+    let logOutput = [];
+    console.log = (...args) => {
+      logOutput.push(args.join(' '));
+      originalLog(...args);
+    };
+
+    await seedBatches();
+
+    // Restore console.log
+    console.log = originalLog;
+
+    res.json({ success: true, message: 'Batches seeded successfully', logs: logOutput });
+  } catch (error) {
+    console.error('Seed Batches Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to seed batches' });
+  }
+};

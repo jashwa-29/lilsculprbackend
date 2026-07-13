@@ -1,0 +1,9 @@
+- [x] Remove `seedBatches` auto-execution from `server.js`
+- [x] Export `seedBatches` function from `seed/seedBatches.js`
+- [x] Update `controllers/batch.controller.js` to include:
+  - `deleteAllBatches`
+  - `deleteBatch`
+  - `editBatch`
+  - `seedBatchesHandler`
+- [x] Update `routes/batch.routes.js` with corresponding routes
+- [x] Verify everything works locally
