@@ -29,7 +29,16 @@ const defaultBatches = [
   { type: 'offline', dayId: 'satsu', time: '12:00–1:00 PM', capacity: 8, status: 'active', instructor: 'Admin' },
   { type: 'offline', dayId: 'satsu', time: '2:00–3:00 PM', capacity: 8, status: 'active', instructor: 'Admin' },
   { type: 'offline', dayId: 'satsu', time: '3:00–4:00 PM', capacity: 8, status: 'active', instructor: 'Admin' },
-  { type: 'offline', dayId: 'satsu', time: '4:00–5:00 PM', capacity: 8, status: 'active', instructor: 'Admin' }
+  { type: 'offline', dayId: 'satsu', time: '4:00–5:00 PM', capacity: 8, status: 'active', instructor: 'Admin' },
+  
+  // Online Batches (Mon & Fri)
+  { type: 'online', dayId: 'monfri', time: '4:00–5:00 PM', capacity: 10, status: 'active', instructor: 'Admin' },
+  
+  // Online Batches (Tue & Thu)
+  { type: 'online', dayId: 'tuethu', time: '4:00–5:00 PM', capacity: 10, status: 'active', instructor: 'Admin' },
+  
+  // Online Batches (Sat & Sun)
+  { type: 'online', dayId: 'satsu', time: '4:00–5:00 PM', capacity: 10, status: 'active', instructor: 'Admin' }
 ];
 
 async function seedBatches() {
