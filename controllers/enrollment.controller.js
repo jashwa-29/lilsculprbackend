@@ -151,11 +151,10 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // ⚠️ TEST MODE: Amount set to ₹1 for live testing
-    // Original amounts commented out below — restore when done testing
-    // let amount = classType === 'offline' ? 2500 : 2200;
-    // if (kitOptIn) { amount += 2000; }
-    let amount = 1; // TEST: ₹1 only
+    let amount = classType === 'offline' ? 2500 : 2200;
+    if (kitOptIn) { amount += 2000; }
+    // ⚠️ TEST MODE (uncomment to test with ₹1):
+    // let amount = 1;
 
     const options = {
       amount: amount * 100,
