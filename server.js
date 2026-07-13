@@ -87,6 +87,10 @@ const connectDB = async () => {
     const seedAdmin = require('./seed/seedAdmin');
     await seedAdmin();
     
+    // Seed default batches
+    const seedBatches = require('./seed/seedBatches');
+    await seedBatches();
+
     // Listen to connection events
     mongoose.connection.on('error', (err) => {
       console.error('❌ MongoDB connection error:', err);
