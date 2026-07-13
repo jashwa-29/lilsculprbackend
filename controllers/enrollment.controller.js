@@ -129,23 +129,33 @@ const createFirstMonthFeeRecord = async (student) => {
 /**
  * POST /api/enrollment/create-order
  * Create a Razorpay order
+ * UPDATED: Accepts batchId and validates batch capacity before creating order
  */
 exports.createOrder = async (req, res) => {
   try {
-    const { classType, kitOptIn } = req.body;
+    const { classType, kitOptIn, batchId } = req.body;
     
     if (!classType) {
       return res.status(400).json({ success: false, error: 'classType is required' });
     }
 
+    // ═══ Validate batch if batchId provided ═══
+    let batch = null;
+    if (batchId) {
+      batch = await Batch.findById(batchId);
+      if (!batch) {
+        return res.status(400).json({ success: false, error: 'Invalid batch ID. Please select a valid batch.' });
+      }
+      if (batch.enrolledStudents.length >= batch.capacity) {
+        return res.status(400).json({ success: false, error: 'This batch is full. Please select another time slot.' });
+      }
+    }
+
     // ⚠️ TEST MODE: Amount set to ₹1 for live testing
     // Original amounts commented out below — restore when done testing
     // let amount = classType === 'offline' ? 2500 : 2200;
-    // if (kitOptIn) {
-    //   amount += 2000;
-    // }
+    // if (kitOptIn) { amount += 2000; }
     let amount = 1; // TEST: ₹1 only
-
 
     const options = {
       amount: amount * 100,
@@ -154,7 +164,13 @@ exports.createOrder = async (req, res) => {
     };
 
     const order = await razorpay.orders.create(options);
-    res.json({ success: true, order, amount, key_id: process.env.RAZORPAY_KEY_ID });
+    res.json({ 
+      success: true, 
+      order, 
+      amount, 
+      key_id: process.env.RAZORPAY_KEY_ID,
+      batch: batch ? { id: batch._id, type: batch.type, dayId: batch.dayId, time: batch.time } : null
+    });
   } catch (error) {
     console.error('Create Order Error:', error);
     res.status(500).json({ success: false, error: 'Failed to create order' });
@@ -164,6 +180,7 @@ exports.createOrder = async (req, res) => {
 /**
  * POST /api/enrollment/submit
  * Handles form submission after payment
+ * UPDATED: Accepts batchId, links student to batch document, adds student to batch's enrolledStudents
  */
 exports.submitEnrollment = async (req, res) => {
   try {
@@ -185,7 +202,8 @@ exports.submitEnrollment = async (req, res) => {
       time,
       slotKey,
       kitOptIn,
-      amountPaid
+      amountPaid,
+      batchId // ← CRITICAL: Accept batchId from frontend
     } = req.body;
 
     // Validate Signature
@@ -214,6 +232,29 @@ exports.submitEnrollment = async (req, res) => {
       ageString = `${age} years`;
     }
 
+    // ═══ CRITICAL: Find or create batch ═══
+    let batchDoc = null;
+    if (batchId) {
+      batchDoc = await Batch.findById(batchId);
+      if (!batchDoc) {
+        return res.status(400).json({ success: false, error: 'Invalid batch ID provided' });
+      }
+    } else {
+      // Fallback: find by classType + dayId + time
+      batchDoc = await Batch.findOne({ type: classType, dayId, time, status: { $in: ['active', 'filling'] } });
+      if (!batchDoc) {
+        // Auto-create if missing (safety net)
+        batchDoc = new Batch({ type: classType, dayId, time, capacity: 8, status: 'active', instructor: 'Admin' });
+        await batchDoc.save();
+        console.log(`✅ Auto-created batch: ${classType}|${dayId}|${time}`);
+      }
+    }
+
+    // Check batch capacity
+    if (batchDoc.enrolledStudents.length >= batchDoc.capacity) {
+      return res.status(400).json({ success: false, error: 'This batch is full. Please select another time slot.' });
+    }
+
     const student = new Student({
       enrollmentId,
       childName,
@@ -240,13 +281,21 @@ exports.submitEnrollment = async (req, res) => {
       feeStartMonth: currentMonthYear,
       feeStartDate: new Date(),
       status: 'active',
-      enrollmentStatus: 'pending', // Not active yet - admin must start level
-      currentLevel: 0, // ═══ NEWBIE ═══
+      enrollmentStatus: 'pending',
+      currentLevel: 0,
       levelHistory: [],
-      levelStartedAt: null
+      levelStartedAt: null,
+      // ═══ CRITICAL: Link student to batch ═══
+      batchId: batchDoc._id,
+      batchJoinedDate: new Date()
     });
 
     await student.save();
+
+    // ═══ Add student to batch's enrolledStudents list ═══
+    await Batch.findByIdAndUpdate(batchDoc._id, {
+      $addToSet: { enrolledStudents: student._id }
+    });
     
     await createFirstMonthFeeRecord(student);
     sendWelcomeEmail(student);
@@ -254,6 +303,7 @@ exports.submitEnrollment = async (req, res) => {
     res.status(201).json({ 
       success: true, 
       student,
+      batch: { id: batchDoc._id, type: batchDoc.type, dayId: batchDoc.dayId, time: batchDoc.time },
       message: 'Enrollment successful! Student is ready to start their level journey.'
     });
   } catch (error) {
