@@ -22,12 +22,14 @@ const birthdayRoutes = require('./routes/birthday.routes');
 const portalRoutes = require('./routes/portal.routes');
 const studentRoutes = require('./routes/student.routes');
 const migrationRoutes = require('./routes/migrationRoutes');
+const feePaymentRoutes = require('./routes/feePayment.routes');
   
 const app = express();  
              
 // Initialize cron jobs
 require('./services/cron.service');
-
+require('./cron/feeCron');
+ 
 // --- Security Middleware ---
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -193,6 +195,7 @@ app.use("/api/batches", batchRoutes);
 app.use("/api/waitlist", waitlistRoutes);
 app.use("/api/birthdays", birthdayRoutes);
 app.use("/api/students", studentRoutes);
+app.use("/api/fee-payment", feePaymentRoutes);
 app.use("/api", migrationRoutes);
 
 // --- Static File Handling ---

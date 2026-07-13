@@ -276,6 +276,208 @@ class EmailService {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Send fee reminder email to parent
+   */
+  async sendFeeReminderEmail(student, feeMonth, feeYear, dueDate) {
+    if (!student.email) {
+      console.log(`[MOCK EMAIL] Fee reminder to ${student.parentName} (no email)`);
+      return { success: false, error: 'No email address' };
+    }
+
+    try {
+      const monthlyFee = student.classType === 'offline' ? 2500 : 2200;
+      const paymentLink = `${process.env.WEBSITE_URL || 'https://www.lilsculpr.com'}/fee-payment.html`;
+
+      const mailOptions = {
+        from: this.from,
+        to: student.email,
+        subject: `📅 Monthly Fee Reminder - ${student.childName} | Lil Sculpr Academy`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #9C29B2, #B84DD1); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { padding: 30px; background: #f9f9f9; }
+              .fee-box { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0; }
+              .fee-amount { font-size: 28px; font-weight: bold; color: #9C29B2; }
+              .button { display: inline-block; background: #9C29B2; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+              .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>🎨 Monthly Fee Reminder</h2>
+                <p>Lil Sculpr Clay Modelling Academy</p>
+              </div>
+              <div class="content">
+                <p>Dear <strong>${student.parentName}</strong>,</p>
+                
+                <p>This is a friendly reminder that the monthly fee for <strong>${student.childName}</strong> is due.</p>
+                
+                <div class="fee-box">
+                  <h3>📋 Fee Details</h3>
+                  <p><strong>Student:</strong> ${student.childName}</p>
+                  <p><strong>Enrollment ID:</strong> ${student.enrollmentId}</p>
+                  <p><strong>Month:</strong> ${feeMonth} ${feeYear}</p>
+                  <p><strong>Amount:</strong> <span class="fee-amount">₹${monthlyFee.toLocaleString('en-IN')}</span></p>
+                  <p><strong>Due Date:</strong> ${dueDate}</p>
+                </div>
+                
+                <p>Please make the payment before the due date to ensure uninterrupted classes.</p>
+                
+                <div style="text-align: center;">
+                  <a href="${paymentLink}" class="button">💳 Pay Now</a>
+                </div>
+                
+                <p style="font-size: 14px; color: #666; margin-top: 20px;">
+                  <strong>Note:</strong> You will need your Enrollment ID and registered phone number to make the payment.
+                </p>
+                
+                <p>If you have already made the payment, please ignore this reminder.</p>
+                
+                <p>Best regards,<br><strong>The Lil Sculpr Team</strong></p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Academy. All rights reserved.</p>
+                <p>468 A, C sector, 2nd Street, AE Block, Anna Nagar West Extension, Chennai - 600101</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      if (this.isMock) {
+        console.log(`[MOCK EMAIL] Fee reminder to ${student.email}`);
+        return { success: true, messageId: `mock-${Date.now()}` };
+      }
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Fee reminder sent to ${student.email}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Fee reminder email error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send fee payment confirmation email
+   */
+  async sendFeePaymentConfirmation(student, feeRecord) {
+    if (!student.email) {
+      console.log(`[MOCK EMAIL] Fee confirmation to ${student.parentName} (no email)`);
+      return { success: false, error: 'No email address' };
+    }
+
+    try {
+      const mailOptions = {
+        from: this.from,
+        to: student.email,
+        subject: `✅ Fee Payment Confirmed - ${student.childName} | Lil Sculpr Academy`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #22C55E, #16A34A); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { padding: 30px; background: #f9f9f9; }
+              .fee-box { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0; }
+              .fee-amount { font-size: 28px; font-weight: bold; color: #16A34A; }
+              .status-badge { display: inline-block; background: #22C55E; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px; }
+              .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>✅ Payment Confirmed!</h2>
+                <p>Lil Sculpr Clay Modelling Academy</p>
+              </div>
+              <div class="content">
+                <p>Dear <strong>${student.parentName}</strong>,</p>
+                
+                <p>We are pleased to confirm that the monthly fee payment for <strong>${student.childName}</strong> has been successfully received.</p>
+                
+                <div class="fee-box">
+                  <h3>📋 Payment Details</h3>
+                  <p><strong>Student:</strong> ${student.childName}</p>
+                  <p><strong>Enrollment ID:</strong> ${student.enrollmentId}</p>
+                  <p><strong>Month:</strong> ${feeRecord.month} ${feeRecord.year}</p>
+                  <p><strong>Amount:</strong> <span class="fee-amount">₹${feeRecord.amount.toLocaleString('en-IN')}</span></p>
+                  <p><strong>Payment Method:</strong> ${feeRecord.paymentMethod}</p>
+                  <p><strong>Payment Date:</strong> ${new Date(feeRecord.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p><span class="status-badge">✅ PAID</span></p>
+                </div>
+                
+                <p>Thank you for your timely payment! Your child's classes will continue without any interruption.</p>
+                
+                <p>Best regards,<br><strong>The Lil Sculpr Team</strong></p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      if (this.isMock) {
+        console.log(`[MOCK EMAIL] Fee confirmation to ${student.email}`);
+        return { success: true, messageId: `mock-${Date.now()}` };
+      }
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Fee confirmation sent to ${student.email}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Fee confirmation email error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send bulk fee reminders to all students with pending fees
+   */
+  async sendBulkFeeReminders(studentsWithPendingFees) {
+    const results = {
+      sent: 0,
+      failed: 0,
+      errors: []
+    };
+
+    for (const student of studentsWithPendingFees) {
+      const now = new Date();
+      const month = now.toLocaleString('en-IN', { month: 'long' });
+      const year = now.getFullYear();
+      const dueDate = new Date(now.getFullYear(), now.getMonth(), 5).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const result = await this.sendFeeReminderEmail(student, month, year, dueDate);
+      if (result.success) {
+        results.sent++;
+      } else {
+        results.failed++;
+        results.errors.push({ studentId: student._id, error: result.error });
+      }
+    }
+
+    return results;
+  }
 }
 
 module.exports = new EmailService();
