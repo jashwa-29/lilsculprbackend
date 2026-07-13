@@ -1,4 +1,5 @@
 const GalleryItem = require('../models/GalleryItem.model');
+const GalleryCategory = require('../models/GalleryCategory.model');
 const path = require('path');
 const fs = require('fs');
 
@@ -65,20 +66,24 @@ exports.getCategories = async (req, res) => {
     }
 };
 
-// Helper function to get category counts
+// Helper function to get category counts and icons
 async function getCategoryCounts() {
-    const categories = [
-        'Miniature Food',
-        'Animals & Characters',
-        'Clay Sculptures',
-        'Decorative Art',
-        'Class Activities',
-        'Other'
-    ];
+    // Fetch dynamic categories
+    const categories = await GalleryCategory.find().sort({ name: 1 });
     
+    // Always include 'Other' as a fallback
+    const categoryList = categories.map(c => ({ _id: c._id, name: c.name, icon: c.icon }));
+    if (!categoryList.find(c => c.name === 'Other')) {
+        categoryList.push({ _id: 'other', name: 'Other', icon: '✨' });
+    }
+
     const counts = {};
-    for (const cat of categories) {
-        counts[cat] = await GalleryItem.countDocuments({ category: cat, isActive: true });
+    for (const cat of categoryList) {
+        counts[cat.name] = {
+            _id: cat._id,
+            count: await GalleryItem.countDocuments({ category: cat.name, isActive: true }),
+            icon: cat.icon
+        };
     }
     return counts;
 }
@@ -293,6 +298,34 @@ exports.reorderGalleryItems = async (req, res) => {
 };
 
 /**
+ * GET /api/gallery/admin/categories
+ * Get all categories as an array for admin management
+ */
+exports.getAllCategoriesAdmin = async (req, res) => {
+    try {
+        const categories = await GalleryCategory.find().sort({ name: 1 });
+        
+        // Always ensure 'Other' exists
+        const hasFallback = categories.some(c => c.name === 'Other');
+        let result = categories.map(async (c) => ({
+            _id: c._id,
+            name: c.name,
+            icon: c.icon,
+            count: await GalleryItem.countDocuments({ category: c.name })
+        }));
+        result = await Promise.all(result);
+
+        if (!hasFallback) {
+            result.push({ _id: 'other', name: 'Other', icon: '\u2728', count: await GalleryItem.countDocuments({ category: 'Other' }) });
+        }
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to fetch categories' });
+    }
+};
+
+/**
  * GET /api/gallery/admin/all
  * Get all gallery items including inactive ones
  */
@@ -310,5 +343,55 @@ exports.getAllGalleryItemsAdmin = async (req, res) => {
             success: false,
             error: 'Failed to fetch all gallery items'
         });
+    }
+};
+
+/**
+ * POST /api/gallery/admin/categories
+ * Create a new gallery category
+ */
+exports.createCategory = async (req, res) => {
+    try {
+        const { name, icon } = req.body;
+        if (!name) {
+            return res.status(400).json({ success: false, error: 'Category name is required' });
+        }
+
+        const newCategory = new GalleryCategory({
+            name: name.trim(),
+            icon: icon || '✨'
+        });
+
+        await newCategory.save();
+        res.status(201).json({ success: true, message: 'Category created', data: newCategory });
+    } catch (error) {
+        if (error.code === 11000) {
+            return res.status(400).json({ success: false, error: 'Category already exists' });
+        }
+        res.status(500).json({ success: false, error: 'Failed to create category' });
+    }
+};
+
+/**
+ * DELETE /api/gallery/admin/categories/:id
+ * Delete a gallery category
+ */
+exports.deleteCategory = async (req, res) => {
+    try {
+        const category = await GalleryCategory.findById(req.params.id);
+        if (!category) {
+            return res.status(404).json({ success: false, error: 'Category not found' });
+        }
+        if (category.name === 'Other') {
+            return res.status(400).json({ success: false, error: 'Cannot delete the default Other category' });
+        }
+
+        // Reassign items to 'Other'
+        await GalleryItem.updateMany({ category: category.name }, { category: 'Other' });
+        await GalleryCategory.findByIdAndDelete(req.params.id);
+
+        res.json({ success: true, message: 'Category deleted and items reassigned to Other' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to delete category' });
     }
 };

@@ -19,7 +19,6 @@ const galleryItemSchema = new mongoose.Schema({
     category: {
         type: String,
         required: true,
-        enum: ['Miniature Food', 'Animals & Characters', 'Clay Sculptures', 'Decorative Art', 'Class Activities', 'Other'],
         default: 'Other'
     },
     isActive: {

@@ -91,6 +91,21 @@ const connectDB = async () => {
     const seedAdmin = require('./seed/seedAdmin');
     await seedAdmin();
 
+    // Seed default gallery categories
+    const GalleryCategory = require('./models/GalleryCategory.model');
+    const defaultCategories = [
+      { name: 'Miniature Food', icon: '🍔' },
+      { name: 'Animals & Characters', icon: '🦒' },
+      { name: 'Clay Sculptures', icon: '🏺' },
+      { name: 'Decorative Art', icon: '🎨' },
+      { name: 'Class Activities', icon: '👨\u200d🎨' },
+      { name: 'Other', icon: '✨' },
+    ];
+    for (const cat of defaultCategories) {
+      await GalleryCategory.updateOne({ name: cat.name }, { $setOnInsert: cat }, { upsert: true });
+    }
+    console.log('✅ Gallery categories seeded');
+
     // Listen to connection events
     mongoose.connection.on('error', (err) => {
       console.error('❌ MongoDB connection error:', err);
