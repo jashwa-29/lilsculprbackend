@@ -23,6 +23,7 @@ const portalRoutes = require('./routes/portal.routes');
 const studentRoutes = require('./routes/student.routes');
 const migrationRoutes = require('./routes/migrationRoutes');
 const feePaymentRoutes = require('./routes/feePayment.routes');
+const galleryRoutes = require('./routes/gallery.routes');
   
 const app = express();  
              
@@ -196,6 +197,7 @@ app.use("/api/waitlist", waitlistRoutes);
 app.use("/api/birthdays", birthdayRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/fee-payment", feePaymentRoutes);
+app.use("/api/gallery", galleryRoutes);
 app.use("/api", migrationRoutes);
 
 // --- Static File Handling ---
