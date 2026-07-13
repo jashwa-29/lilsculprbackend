@@ -5,8 +5,6 @@ const fs = require('fs');
 // Helper function to delete an image file from the server
 const deleteImageFile = (imageUrl) => {
     if (!imageUrl) return;
-    // Extract the filename from the URL
-    // Assumes URL format like /uploads/gallery-1234567890-filename.jpg
     const filename = path.basename(imageUrl);
     const filePath = path.join(__dirname, '../uploads/', filename);
     if (fs.existsSync(filePath)) {
@@ -19,15 +17,24 @@ const deleteImageFile = (imageUrl) => {
 
 /**
  * GET /api/gallery
- * Get all active gallery items
+ * Get all active gallery items with optional category filter
  */
 exports.getAllGalleryItems = async (req, res) => {
     try {
-        const items = await GalleryItem.find({ isActive: true })
-            .sort({ displayOrder: 1, createdAt: -1 }); // Show active ones, newest first
+        const { category } = req.query;
+        
+        let query = { isActive: true };
+        if (category && category !== 'all') {
+            query.category = category;
+        }
+        
+        const items = await GalleryItem.find(query)
+            .sort({ displayOrder: 1, createdAt: -1 });
+            
         res.json({
             success: true,
-            data: items
+            data: items,
+            categories: await getCategoryCounts()
         });
     } catch (error) {
         console.error('Get All Gallery Items Error:', error);
@@ -37,6 +44,44 @@ exports.getAllGalleryItems = async (req, res) => {
         });
     }
 };
+
+/**
+ * GET /api/gallery/categories
+ * Get all categories with item counts
+ */
+exports.getCategories = async (req, res) => {
+    try {
+        const categories = await getCategoryCounts();
+        res.json({
+            success: true,
+            data: categories
+        });
+    } catch (error) {
+        console.error('Get Categories Error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch categories'
+        });
+    }
+};
+
+// Helper function to get category counts
+async function getCategoryCounts() {
+    const categories = [
+        'Miniature Food',
+        'Animals & Characters',
+        'Clay Sculptures',
+        'Decorative Art',
+        'Class Activities',
+        'Other'
+    ];
+    
+    const counts = {};
+    for (const cat of categories) {
+        counts[cat] = await GalleryItem.countDocuments({ category: cat, isActive: true });
+    }
+    return counts;
+}
 
 /**
  * GET /api/gallery/:id
@@ -72,9 +117,8 @@ exports.getGalleryItemById = async (req, res) => {
  */
 exports.createGalleryItem = async (req, res) => {
     try {
-        const { title, description, isActive = true } = req.body;
+        const { title, description, category, isActive = true } = req.body;
 
-        // Check if a file was uploaded
         if (!req.file) {
             return res.status(400).json({
                 success: false,
@@ -82,14 +126,12 @@ exports.createGalleryItem = async (req, res) => {
             });
         }
 
-        // Construct the image URL
-        // Multer stores the file in the 'uploads' folder
-        // The URL will be something like /uploads/filename.jpg
         const imageUrl = `/uploads/${req.file.filename}`;
 
         const newItem = new GalleryItem({
             title: title.trim(),
             description: description ? description.trim() : '',
+            category: category || 'Other',
             imageUrl,
             isActive: isActive === 'true' || isActive === true
         });
@@ -104,7 +146,6 @@ exports.createGalleryItem = async (req, res) => {
 
     } catch (error) {
         console.error('Create Gallery Item Error:', error);
-        // If there was an error, delete the uploaded file to clean up
         if (req.file) {
             const filePath = path.join(__dirname, '../uploads/', req.file.filename);
             if (fs.existsSync(filePath)) {
@@ -120,16 +161,15 @@ exports.createGalleryItem = async (req, res) => {
 
 /**
  * PUT /api/gallery/admin/:id
- * Update an existing gallery item, optionally with a new image
+ * Update an existing gallery item
  */
 exports.updateGalleryItem = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, isActive } = req.body;
+        const { title, description, category, isActive } = req.body;
 
         const existingItem = await GalleryItem.findById(id);
         if (!existingItem) {
-            // If item not found, delete the uploaded file if any
             if (req.file) {
                 const filePath = path.join(__dirname, '../uploads/', req.file.filename);
                 if (fs.existsSync(filePath)) {
@@ -142,18 +182,15 @@ exports.updateGalleryItem = async (req, res) => {
             });
         }
 
-        // Prepare update data
         const updateData = {
             title: title ? title.trim() : existingItem.title,
             description: description !== undefined ? description.trim() : existingItem.description,
+            category: category || existingItem.category,
             isActive: isActive !== undefined ? isActive === 'true' || isActive === true : existingItem.isActive
         };
 
-        // If a new file was uploaded, update image and delete the old one
         if (req.file) {
-            // Delete the old image file
             deleteImageFile(existingItem.imageUrl);
-            // Set the new image URL
             updateData.imageUrl = `/uploads/${req.file.filename}`;
         }
 
@@ -171,7 +208,6 @@ exports.updateGalleryItem = async (req, res) => {
 
     } catch (error) {
         console.error('Update Gallery Item Error:', error);
-        // If there was an error, delete the newly uploaded file to clean up
         if (req.file) {
             const filePath = path.join(__dirname, '../uploads/', req.file.filename);
             if (fs.existsSync(filePath)) {
@@ -187,7 +223,7 @@ exports.updateGalleryItem = async (req, res) => {
 
 /**
  * DELETE /api/gallery/admin/:id
- * Delete a gallery item and its associated image file
+ * Delete a gallery item
  */
 exports.deleteGalleryItem = async (req, res) => {
     try {
@@ -201,10 +237,7 @@ exports.deleteGalleryItem = async (req, res) => {
             });
         }
 
-        // Delete the image file from the server
         deleteImageFile(item.imageUrl);
-
-        // Delete the document from the database
         await GalleryItem.findByIdAndDelete(id);
 
         res.json({
@@ -223,12 +256,11 @@ exports.deleteGalleryItem = async (req, res) => {
 
 /**
  * POST /api/gallery/admin/reorder
- * Reorder gallery items by setting displayOrder
- * Expects an array of { id, displayOrder }
+ * Reorder gallery items
  */
 exports.reorderGalleryItems = async (req, res) => {
     try {
-        const { items } = req.body; // items = [{ id: '...', displayOrder: 0 }, ...]
+        const { items } = req.body;
 
         if (!Array.isArray(items)) {
             return res.status(400).json({
@@ -237,7 +269,6 @@ exports.reorderGalleryItems = async (req, res) => {
             });
         }
 
-        // Use bulkWrite for efficiency
         const bulkOps = items.map(item => ({
             updateOne: {
                 filter: { _id: item.id },
@@ -263,7 +294,7 @@ exports.reorderGalleryItems = async (req, res) => {
 
 /**
  * GET /api/gallery/admin/all
- * Get all gallery items including inactive ones (for admin panel)
+ * Get all gallery items including inactive ones
  */
 exports.getAllGalleryItemsAdmin = async (req, res) => {
     try {

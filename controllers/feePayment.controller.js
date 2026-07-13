@@ -410,3 +410,57 @@ exports.getPaymentSummary = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get all fee records
+ * GET /api/fee-payment/all
+ */
+exports.getAllFeeRecords = async (req, res) => {
+  try {
+    const records = await FeeRecord.find()
+      .populate('studentId', 'firstName lastName enrollmentId batch')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: records.length,
+      data: records
+    });
+  } catch (error) {
+    console.error('Get All Fee Records Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch fee records'
+    });
+  }
+};
+
+/**
+ * Delete a fee record
+ * DELETE /api/fee-payment/:id
+ */
+exports.deleteFeeRecord = async (req, res) => {
+  try {
+    const record = await FeeRecord.findById(req.params.id);
+    
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: 'Fee record not found'
+      });
+    }
+
+    await FeeRecord.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Fee record deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete Fee Record Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete fee record'
+    });
+  }
+};
