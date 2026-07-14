@@ -53,6 +53,11 @@ async function syncStudentPaymentStatus(studentId) {
             needsSave = true;
         }
 
+        if (overallStatus === 'Completed' && (!student.amountPaid || student.amountPaid === 0) && feeRecords.length > 0) {
+            student.amountPaid = feeRecords[0].amount;
+            needsSave = true;
+        }
+
         if (needsSave) {
             await student.save();
             console.log(`✅ Synced student ${student.childName} (${student.enrollmentId}) paymentStatus to ${overallStatus}`);
