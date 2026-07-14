@@ -63,19 +63,44 @@ const sendWelcomeEmail = async (student) => {
 };
 
 /**
- * Generates a unique enrollment ID
+ * Generates a unique enrollment ID with automatic retry on duplicate key error.
+ * Format: LS-YYYY-XXXX where XXXX is a zero-padded sequence number (4 digits).
+ * Supports up to 9999 students per year. If more than 9999, padding adjusts automatically.
  */
-const generateEnrollmentId = async () => {
+const generateEnrollmentId = async (retryCount = 0) => {
   const year = new Date().getFullYear();
   const startOfYear = new Date(year, 0, 1);
   const endOfYear = new Date(year, 11, 31, 23, 59, 59);
-  
+
   const count = await Student.countDocuments({
     createdAt: { $gte: startOfYear, $lte: endOfYear }
   });
-  
-  const sequence = (count + 1).toString().padStart(3, '0');
-  return `LS-${year}-${sequence}`;
+
+  // Use 4-digit padding by default (supports up to 9999 students per year)
+  // If more than 9999 students, increase padding dynamically
+  let padding = 4;
+  const nextNumber = count + 1;
+  if (nextNumber > 9999) padding = String(nextNumber).length;
+  const sequence = nextNumber.toString().padStart(padding, '0');
+  const newId = `LS-${year}-${sequence}`;
+
+  // Check for existing ID (avoid race condition)
+  const existing = await Student.findOne({ enrollmentId: newId });
+  if (existing) {
+    // If the ID exists and we haven't retried too many times, try again
+    if (retryCount < 5) {
+      console.warn(`⚠️ Duplicate enrollment ID generated: ${newId}. Retrying (attempt ${retryCount + 1})...`);
+      // Add a tiny delay to avoid tight loop
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return generateEnrollmentId(retryCount + 1);
+    } else {
+      // Fallback: use timestamp-based unique ID to guarantee uniqueness
+      console.error(`❌ Failed to generate unique enrollment ID after ${retryCount} retries. Using fallback.`);
+      return `LS-${year}-${Date.now().toString(36).toUpperCase()}`;
+    }
+  }
+
+  return newId;
 };
 
 /**
