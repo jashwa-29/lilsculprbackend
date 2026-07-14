@@ -478,6 +478,228 @@ class EmailService {
 
     return results;
   }
+
+  /**
+   * Send compensation request notification to admin
+   */
+  async sendCompensationRequestNotification(request, student) {
+    if (this.isMock) {
+      console.log(`[MOCK EMAIL] Compensation request notification to admin`);
+      return { success: true, messageId: `mock-${Date.now()}` };
+    }
+
+    try {
+      const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
+      
+      const mailOptions = {
+        from: this.from,
+        to: adminEmail,
+        subject: `📋 New Compensation Request - ${student.childName}`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: #6366f1; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { padding: 30px; background: #f9f9f9; }
+              .info-box { background: white; border-left: 4px solid #6366f1; padding: 15px; margin: 15px 0; }
+              .button { display: inline-block; background: #6366f1; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+              .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+              .status-pending { display: inline-block; background: #fef9c3; color: #854d0e; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>📋 New Compensation Request</h2>
+              </div>
+              <div class="content">
+                <p><strong>Student:</strong> ${student.childName} (${student.enrollmentId})</p>
+                <p><strong>Parent:</strong> ${student.parentName}</p>
+                <p><strong>Contact:</strong> ${student.contact1}</p>
+                <p><strong>Email:</strong> ${student.email || 'Not provided'}</p>
+                
+                <div class="info-box">
+                  <h4>📍 Requested Class Details</h4>
+                  <p><strong>Date:</strong> ${new Date(request.requestedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p><strong>Type:</strong> ${request.requestedBatchType === 'offline' ? '🏫 Offline' : '💻 Online'}</p>
+                  <p><strong>Time:</strong> ${request.requestedTime}</p>
+                  ${request.reason ? `<p><strong>Reason:</strong> ${request.reason}</p>` : ''}
+                </div>
+                
+                <p><span class="status-pending">⏳ Pending Review</span></p>
+                
+                <p style="text-align: center;">
+                  <a href="${process.env.WEBSITE_URL || 'https://www.lilsculpr.com'}/admin/compensations" class="button">📋 Review Request</a>
+                </p>
+                
+                <p>This request was submitted by the parent through the Parents Portal.</p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Compensation request notification sent to admin`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Compensation request notification error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send compensation request accepted email to parent
+   */
+  async sendCompensationRequestAccepted(request, record) {
+    if (this.isMock) {
+      console.log(`[MOCK EMAIL] Compensation request accepted to ${request.email}`);
+      return { success: true, messageId: `mock-${Date.now()}` };
+    }
+
+    try {
+      const mailOptions = {
+        from: this.from,
+        to: request.email,
+        subject: `✅ Compensation Request Accepted - ${request.childName}`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: #22c55e; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { padding: 30px; background: #f9f9f9; }
+              .info-box { background: white; border-left: 4px solid #22c55e; padding: 15px; margin: 15px 0; }
+              .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+              .status-accepted { display: inline-block; background: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>✅ Compensation Request Accepted</h2>
+              </div>
+              <div class="content">
+                <p>Dear <strong>${request.parentName}</strong>,</p>
+                
+                <p>We are pleased to inform you that the compensation (make-up) class request for <strong>${request.childName}</strong> has been <strong>ACCEPTED</strong>.</p>
+                
+                <div class="info-box">
+                  <h4>📍 Make-up Class Details</h4>
+                  <p><strong>Date:</strong> ${new Date(request.requestedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p><strong>Type:</strong> ${request.requestedBatchType === 'offline' ? '🏫 Offline' : '💻 Online'}</p>
+                  <p><strong>Time:</strong> ${request.requestedTime}</p>
+                </div>
+                
+                <p><span class="status-accepted">✅ Accepted</span></p>
+                
+                ${request.adminNotes ? `<p><strong>Admin Notes:</strong> ${request.adminNotes}</p>` : ''}
+                
+                <p>Your child's make-up class has been booked. Please ensure they attend the class on the scheduled date.</p>
+                
+                <p>Best regards,<br><strong>The Lil Sculpr Team</strong></p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Compensation request accepted email sent to ${request.email}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Compensation request accepted email error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Send compensation request rejected email to parent
+   */
+  async sendCompensationRequestRejected(request) {
+    if (this.isMock) {
+      console.log(`[MOCK EMAIL] Compensation request rejected to ${request.email}`);
+      return { success: true, messageId: `mock-${Date.now()}` };
+    }
+
+    try {
+      const mailOptions = {
+        from: this.from,
+        to: request.email,
+        subject: `❌ Compensation Request Update - ${request.childName}`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: #ef4444; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { padding: 30px; background: #f9f9f9; }
+              .info-box { background: white; border-left: 4px solid #ef4444; padding: 15px; margin: 15px 0; }
+              .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+              .status-rejected { display: inline-block; background: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>❌ Compensation Request Update</h2>
+              </div>
+              <div class="content">
+                <p>Dear <strong>${request.parentName}</strong>,</p>
+                
+                <p>We regret to inform you that the compensation (make-up) class request for <strong>${request.childName}</strong> has been <strong>REJECTED</strong>.</p>
+                
+                <div class="info-box">
+                  <h4>📍 Requested Details</h4>
+                  <p><strong>Date:</strong> ${new Date(request.requestedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  <p><strong>Time:</strong> ${request.requestedTime}</p>
+                </div>
+                
+                <p><span class="status-rejected">❌ Rejected</span></p>
+                
+                <p><strong>Reason:</strong> ${request.rejectionReason}</p>
+                
+                ${request.adminNotes ? `<p><strong>Additional Notes:</strong> ${request.adminNotes}</p>` : ''}
+                
+                <p>If you have any questions, please contact us at <strong>${process.env.EMAIL_USER || 'lilsculpr@gmail.com'}</strong>.</p>
+                
+                <p>Best regards,<br><strong>The Lil Sculpr Team</strong></p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Compensation request rejected email sent to ${request.email}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Compensation request rejected email error:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = new EmailService();
