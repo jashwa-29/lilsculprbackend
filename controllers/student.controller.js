@@ -43,6 +43,44 @@ exports.getAllStudents = async (req, res) => {
 };
 
 /**
+ * GET /api/students/batch/:batchId
+ * Get all active/paused students for a specific batch
+ */
+exports.getStudentsByBatch = async (req, res) => {
+  try {
+    const { batchId } = req.params;
+
+    const batch = await Batch.findById(batchId);
+    if (!batch) {
+      return res.status(404).json({ success: false, error: 'Batch not found' });
+    }
+
+    const students = await Student.find({
+      batchId: batchId,
+      status: { $ne: 'cancelled' }
+    })
+      .populate('batchId')
+      .sort({ childName: 1 });
+
+    res.json({
+      success: true,
+      students,
+      batch: {
+        _id: batch._id,
+        type: batch.type,
+        dayId: batch.dayId,
+        time: batch.time,
+        capacity: batch.capacity
+      }
+    });
+  } catch (error) {
+    console.error('Get Students By Batch Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch students for batch' });
+  }
+};
+
+
+/**
  * GET /api/students/:id
  * Get a single student by ID
  */

@@ -15,6 +15,9 @@ router.get('/levels', studentController.getLevelConfig);
 // GET level statistics
 router.get('/level-stats', studentController.getLevelStats);
 
+// GET students by batch (must come before /:id)
+router.get('/batch/:batchId', studentController.getStudentsByBatch);
+
 // GET a single student
 router.get('/:id', studentController.getStudentById);
 
