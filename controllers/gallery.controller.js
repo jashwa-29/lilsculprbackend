@@ -1,4 +1,5 @@
 const GalleryItem = require('../models/GalleryItem.model');
+const Category = require('../models/Category.model');
 const path = require('path');
 const fs = require('fs');
 
@@ -13,6 +14,22 @@ const deleteImageFile = (imageUrl) => {
     }
 };
 
+// ─── UPDATED: Get category counts ──────────────────────────────
+async function getCategoryCounts() {
+    const categories = await Category.find({ isActive: true });
+    const counts = {};
+    for (const cat of categories) {
+        counts[cat.name] = await GalleryItem.countDocuments({ 
+            category: cat._id, 
+            isActive: true 
+        });
+    }
+    return counts;
+}
+
+// ─── UPDATED: Populate category with name and icon ──────────────
+const populateCategory = { path: 'category', select: 'name icon' };
+
 // --- Public Routes (No Auth Required) ---
 
 /**
@@ -25,10 +42,18 @@ exports.getAllGalleryItems = async (req, res) => {
         
         let query = { isActive: true };
         if (category && category !== 'all') {
-            query.category = category;
+            // Check if category is an ObjectId or a name
+            const cat = await Category.findOne({ 
+                name: category,
+                isActive: true 
+            });
+            if (cat) {
+                query.category = cat._id;
+            }
         }
         
         const items = await GalleryItem.find(query)
+            .populate(populateCategory)
             .sort({ displayOrder: 1, createdAt: -1 });
             
         res.json({
@@ -65,31 +90,14 @@ exports.getCategories = async (req, res) => {
     }
 };
 
-// Helper function to get category counts
-async function getCategoryCounts() {
-    const categories = [
-        'Miniature Food',
-        'Animals & Characters',
-        'Clay Sculptures',
-        'Decorative Art',
-        'Class Activities',
-        'Other'
-    ];
-    
-    const counts = {};
-    for (const cat of categories) {
-        counts[cat] = await GalleryItem.countDocuments({ category: cat, isActive: true });
-    }
-    return counts;
-}
-
 /**
  * GET /api/gallery/:id
  * Get a single gallery item by ID
  */
 exports.getGalleryItemById = async (req, res) => {
     try {
-        const item = await GalleryItem.findById(req.params.id);
+        const item = await GalleryItem.findById(req.params.id)
+            .populate(populateCategory);
         if (!item) {
             return res.status(404).json({
                 success: false,
@@ -126,17 +134,34 @@ exports.createGalleryItem = async (req, res) => {
             });
         }
 
+        // Validate category
+        const categoryDoc = await Category.findById(category);
+        if (!categoryDoc) {
+            // Clean up uploaded file
+            const filePath = path.join(__dirname, '../uploads/', req.file.filename);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid category. Please select a valid category.'
+            });
+        }
+
         const imageUrl = `/uploads/${req.file.filename}`;
 
         const newItem = new GalleryItem({
             title: title.trim(),
             description: description ? description.trim() : '',
-            category: category || 'Other',
+            category: category,
             imageUrl,
             isActive: isActive === 'true' || isActive === true
         });
 
         await newItem.save();
+
+        // Populate category before sending response
+        await newItem.populate(populateCategory);
 
         res.status(201).json({
             success: true,
@@ -185,9 +210,26 @@ exports.updateGalleryItem = async (req, res) => {
         const updateData = {
             title: title ? title.trim() : existingItem.title,
             description: description !== undefined ? description.trim() : existingItem.description,
-            category: category || existingItem.category,
             isActive: isActive !== undefined ? isActive === 'true' || isActive === true : existingItem.isActive
         };
+
+        // Validate and update category if provided
+        if (category) {
+            const categoryDoc = await Category.findById(category);
+            if (!categoryDoc) {
+                if (req.file) {
+                    const filePath = path.join(__dirname, '../uploads/', req.file.filename);
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                }
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid category. Please select a valid category.'
+                });
+            }
+            updateData.category = category;
+        }
 
         if (req.file) {
             deleteImageFile(existingItem.imageUrl);
@@ -198,7 +240,7 @@ exports.updateGalleryItem = async (req, res) => {
             id,
             updateData,
             { new: true, runValidators: true }
-        );
+        ).populate(populateCategory);
 
         res.json({
             success: true,
@@ -299,6 +341,7 @@ exports.reorderGalleryItems = async (req, res) => {
 exports.getAllGalleryItemsAdmin = async (req, res) => {
     try {
         const items = await GalleryItem.find()
+            .populate(populateCategory)
             .sort({ displayOrder: 1, createdAt: -1 });
         res.json({
             success: true,
