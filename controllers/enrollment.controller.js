@@ -147,48 +147,58 @@ const createFirstMonthFeeRecord = async (student) => {
  */
 const syncPaymentStatusWithFeeRecords = async (student) => {
   if (student.paymentStatus !== 'Completed') return;
-  
+
   const now = new Date();
   const currentMonth = now.toLocaleString('en-IN', { month: 'long' });
   const currentYear = now.getFullYear();
-  
-  // Check if there's a fee record for the current month
-  const existingFee = await FeeRecord.findOne({
-    studentId: student._id,
-    month: currentMonth,
-    year: currentYear
-  });
-  
-  // If no fee record exists, create one
-  if (!existingFee) {
-    const baseFee = student.classType === 'offline' ? 2500 : 2200;
-    const totalAmount = student.kitOptIn ? baseFee + 2000 : baseFee;
-    
-    const feeRecord = new FeeRecord({
-      studentId: student._id,
-      enrollmentId: student.enrollmentId,
-      childName: student.childName,
-      parentName: student.parentName,
-      email: student.email,
-      contact1: student.contact1,
-      month: currentMonth,
-      year: currentYear,
-      amount: totalAmount,
-      status: 'Paid',
-      paymentMethod: student.paymentMethod || 'Razorpay',
-      paidAt: new Date(),
-      notes: `First month fee paid via enrollment (${student.enrollmentId || 'Manual'})`
-    });
-    await feeRecord.save();
-    console.log(`✅ Synced fee record for ${student.childName}: ${currentMonth} ${currentYear} (Paid)`);
-  } else if (existingFee.status === 'Pending') {
-    // If fee record exists but is pending, mark it as paid
-    existingFee.status = 'Paid';
-    existingFee.paymentMethod = student.paymentMethod || 'Razorpay';
-    existingFee.paidAt = new Date();
-    existingFee.notes = `Marked as Paid based on admission payment (${student.enrollmentId || 'Manual'})`;
-    await existingFee.save();
-    console.log(`✅ Updated fee record for ${student.childName}: ${currentMonth} ${currentYear} (Pending → Paid)`);
+
+  // ─── Helper: ensure a paid fee record exists for a given month/year ───
+  const ensurePaidRecord = async (month, year) => {
+    const existing = await FeeRecord.findOne({ studentId: student._id, month, year });
+    if (!existing) {
+      const baseFee = student.classType === 'offline' ? 2500 : 2200;
+      const totalAmount = student.kitOptIn ? baseFee + 2000 : baseFee;
+      const feeRecord = new FeeRecord({
+        studentId: student._id,
+        enrollmentId: student.enrollmentId,
+        childName: student.childName,
+        parentName: student.parentName,
+        email: student.email,
+        contact1: student.contact1,
+        month,
+        year,
+        amount: totalAmount,
+        status: 'Paid',
+        paymentMethod: student.paymentMethod || 'Razorpay',
+        paidAt: new Date(),
+        notes: `First month fee paid via enrollment (${student.enrollmentId || 'Manual'})`
+      });
+      await feeRecord.save();
+      console.log(`✅ Synced fee record for ${student.childName}: ${month} ${year} (Paid)`);
+    } else if (existing.status === 'Pending') {
+      existing.status = 'Paid';
+      existing.paymentMethod = student.paymentMethod || 'Razorpay';
+      existing.paidAt = new Date();
+      existing.notes = `Marked as Paid based on admission payment (${student.enrollmentId || 'Manual'})`;
+      await existing.save();
+      console.log(`✅ Updated fee record for ${student.childName}: ${month} ${year} (Pending → Paid)`);
+    }
+  };
+
+  // Always sync the current month
+  await ensurePaidRecord(currentMonth, currentYear);
+
+  // Also sync the enrollment month if it differs from current month
+  // (covers students whose feeStartMonth was set to a prior month)
+  if (student.feeStartMonth) {
+    const parts = student.feeStartMonth.split(' '); // e.g. "July 2026"
+    if (parts.length === 2) {
+      const enrollMonth = parts[0];
+      const enrollYear = parseInt(parts[1]);
+      if (!isNaN(enrollYear) && (enrollMonth !== currentMonth || enrollYear !== currentYear)) {
+        await ensurePaidRecord(enrollMonth, enrollYear);
+      }
+    }
   }
 };
 
