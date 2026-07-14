@@ -40,9 +40,20 @@ async function syncStudentPaymentStatus(studentId) {
             overallStatus = 'Pending'; // Set to Pending if at least one is pending
         }
 
-        // 4. Update the student's paymentStatus if it has changed
+        // 4. Update the student's paymentStatus if it has changed, or if razorpayPaymentId needs clearing
+        let needsSave = false;
+
         if (student.paymentStatus !== overallStatus) {
             student.paymentStatus = overallStatus;
+            needsSave = true;
+        }
+
+        if (overallStatus === 'Completed' && student.razorpayPaymentId && student.razorpayPaymentId.startsWith('PENDING-')) {
+            student.razorpayPaymentId = `MANUAL-${Date.now()}`;
+            needsSave = true;
+        }
+
+        if (needsSave) {
             await student.save();
             console.log(`✅ Synced student ${student.childName} (${student.enrollmentId}) paymentStatus to ${overallStatus}`);
         }
