@@ -54,8 +54,4 @@ router.put('/admin/:id', upload.single('image'), galleryController.updateGallery
 router.delete('/admin/:id', galleryController.deleteGalleryItem);
 router.post('/admin/reorder', galleryController.reorderGalleryItems);
 
-router.get('/admin/categories', galleryController.getAllCategoriesAdmin);
-router.post('/admin/categories', galleryController.createCategory);
-router.delete('/admin/categories/:id', galleryController.deleteCategory);
-
 module.exports = router;
