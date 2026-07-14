@@ -7,6 +7,7 @@ const Config = require('../models/config.model');
 const FeeRecord = require('../models/FeeRecord.model');
 const AttendanceRecord = require('../models/AttendanceRecord.model');
 const CompensationRecord = require('../models/CompensationRecord.model');
+const { syncStudentPaymentStatus } = require('../services/syncFeeStatus.service');
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -740,6 +741,9 @@ exports.upsertStudentFee = async (req, res) => {
       { $set: feeData },
       { upsert: true, new: true }
     );
+
+    // Sync the student's overall payment status
+    await syncStudentPaymentStatus(req.params.id);
 
     if (status === 'Paid' && student.feeCoverage === 'pending_first_month') {
       const currentMonthYear = getCurrentMonthYear();

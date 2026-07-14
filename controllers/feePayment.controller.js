@@ -3,6 +3,7 @@ const FeeRecord = require('../models/FeeRecord.model');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const emailService = require('../services/email.service');
+const { syncStudentPaymentStatus } = require('../services/syncFeeStatus.service');
 
 // Initialize Razorpay
 let razorpay;
@@ -265,6 +266,9 @@ exports.verifyFeePayment = async (req, res) => {
       { upsert: true, new: true }
     );
 
+    // Sync the student's overall payment status
+    await syncStudentPaymentStatus(studentId);
+
     // Send confirmation email (non-blocking)
     if (student.email) {
       emailService.sendFeePaymentConfirmation(student, feeRecord).catch(err => {
@@ -451,6 +455,9 @@ exports.deleteFeeRecord = async (req, res) => {
     }
 
     await FeeRecord.findByIdAndDelete(req.params.id);
+
+    // Sync the student's overall payment status
+    await syncStudentPaymentStatus(record.studentId);
 
     res.json({
       success: true,
