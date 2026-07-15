@@ -2,6 +2,7 @@ const GalleryItem = require('../models/GalleryItem.model');
 const Category = require('../models/Category.model');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
 // Helper function to delete an image file from the server
 const deleteImageFile = (imageUrl) => {
@@ -14,12 +15,12 @@ const deleteImageFile = (imageUrl) => {
     }
 };
 
-// ─── UPDATED: Get category counts ──────────────────────────────
+// ─── Get category counts ──────────────────────────────────────────────
 async function getCategoryCounts() {
     const categories = await Category.find({ isActive: true });
     const counts = {};
     for (const cat of categories) {
-        counts[cat.name] = await GalleryItem.countDocuments({ 
+        counts[cat._id.toString()] = await GalleryItem.countDocuments({ 
             category: cat._id, 
             isActive: true 
         });
@@ -27,7 +28,7 @@ async function getCategoryCounts() {
     return counts;
 }
 
-// ─── UPDATED: Populate category with name and icon ──────────────
+// ─── Populate category with name and icon ──────────────────────────────
 const populateCategory = { path: 'category', select: 'name icon' };
 
 // --- Public Routes (No Auth Required) ---
@@ -43,22 +44,41 @@ exports.getAllGalleryItems = async (req, res) => {
         let query = { isActive: true };
         if (category && category !== 'all') {
             // Check if category is an ObjectId or a name
-            const cat = await Category.findOne({ 
-                name: category,
-                isActive: true 
-            });
-            if (cat) {
-                query.category = cat._id;
+            let categoryId = category;
+            // If it's not a valid ObjectId, try to find by name
+            if (!mongoose.Types.ObjectId.isValid(category)) {
+                const cat = await Category.findOne({ 
+                    name: category,
+                    isActive: true 
+                });
+                if (cat) {
+                    categoryId = cat._id;
+                } else {
+                    // If category not found, return empty
+                    return res.json({
+                        success: true,
+                        data: [],
+                        categories: await getCategoryCounts()
+                    });
+                }
             }
+            query.category = categoryId;
         }
         
         const items = await GalleryItem.find(query)
             .populate(populateCategory)
             .sort({ displayOrder: 1, createdAt: -1 });
             
+        // Format items for frontend
+        const formattedItems = items.map(item => ({
+            ...item.toObject(),
+            categoryName: item.category?.name || 'Other',
+            categoryIcon: item.category?.icon || '📁'
+        }));
+            
         res.json({
             success: true,
-            data: items,
+            data: formattedItems,
             categories: await getCategoryCounts()
         });
     } catch (error) {
@@ -76,10 +96,24 @@ exports.getAllGalleryItems = async (req, res) => {
  */
 exports.getCategories = async (req, res) => {
     try {
-        const categories = await getCategoryCounts();
+        const categories = await Category.find({ isActive: true })
+            .sort({ displayOrder: 1, name: 1 });
+        
+        // Get counts for each category
+        const categoriesWithCounts = await Promise.all(categories.map(async (cat) => {
+            const count = await GalleryItem.countDocuments({ 
+                category: cat._id, 
+                isActive: true 
+            });
+            return {
+                ...cat.toObject(),
+                itemCount: count
+            };
+        }));
+        
         res.json({
             success: true,
-            data: categories
+            data: categoriesWithCounts
         });
     } catch (error) {
         console.error('Get Categories Error:', error);
@@ -106,7 +140,11 @@ exports.getGalleryItemById = async (req, res) => {
         }
         res.json({
             success: true,
-            data: item
+            data: {
+                ...item.toObject(),
+                categoryName: item.category?.name || 'Other',
+                categoryIcon: item.category?.icon || '📁'
+            }
         });
     } catch (error) {
         console.error('Get Gallery Item By ID Error:', error);
@@ -166,7 +204,11 @@ exports.createGalleryItem = async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'Gallery item created successfully',
-            data: newItem
+            data: {
+                ...newItem.toObject(),
+                categoryName: newItem.category?.name || 'Other',
+                categoryIcon: newItem.category?.icon || '📁'
+            }
         });
 
     } catch (error) {
@@ -210,7 +252,7 @@ exports.updateGalleryItem = async (req, res) => {
         const updateData = {
             title: title ? title.trim() : existingItem.title,
             description: description !== undefined ? description.trim() : existingItem.description,
-            isActive: isActive !== undefined ? isActive === 'true' || isActive === true : existingItem.isActive
+            isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : existingItem.isActive
         };
 
         // Validate and update category if provided
@@ -245,7 +287,11 @@ exports.updateGalleryItem = async (req, res) => {
         res.json({
             success: true,
             message: 'Gallery item updated successfully',
-            data: updatedItem
+            data: {
+                ...updatedItem.toObject(),
+                categoryName: updatedItem.category?.name || 'Other',
+                categoryIcon: updatedItem.category?.icon || '📁'
+            }
         });
 
     } catch (error) {
@@ -343,9 +389,16 @@ exports.getAllGalleryItemsAdmin = async (req, res) => {
         const items = await GalleryItem.find()
             .populate(populateCategory)
             .sort({ displayOrder: 1, createdAt: -1 });
+        
+        const formattedItems = items.map(item => ({
+            ...item.toObject(),
+            categoryName: item.category?.name || 'Other',
+            categoryIcon: item.category?.icon || '📁'
+        }));
+            
         res.json({
             success: true,
-            data: items
+            data: formattedItems
         });
     } catch (error) {
         console.error('Get All Gallery Items Admin Error:', error);

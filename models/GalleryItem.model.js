@@ -15,18 +15,16 @@ const galleryItemSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    // ═══ NEW: Category field ═══
+    // ═══ FIX: Reference Category model instead of hardcoded enum ═══
     category: {
-        type: String,
-        required: true,
-        enum: ['Miniature Food', 'Animals & Characters', 'Clay Sculptures', 'Decorative Art', 'Class Activities', 'Other'],
-        default: 'Other'
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category',
+        required: true
     },
     isActive: {
         type: Boolean,
         default: true
     },
-    // Optional: Order of display, can be used for manual sorting later
     displayOrder: {
         type: Number,
         default: 0
@@ -35,7 +33,8 @@ const galleryItemSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster category queries
+// Index for faster queries
 galleryItemSchema.index({ category: 1, isActive: 1 });
+galleryItemSchema.index({ displayOrder: 1 });
 
 module.exports = mongoose.model('GalleryItem', galleryItemSchema);
