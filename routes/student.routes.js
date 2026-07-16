@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const studentController = require('../controllers/student.controller');
 const { protect } = require('../middleware/auth.middleware');
+const upload = require('../middleware/upload');
 
 // All routes are protected
 router.use(protect);
@@ -30,8 +31,8 @@ router.post('/:id/start-level', studentController.startLevelJourney);
 // POST advance to next level
 router.post('/:id/advance-level', studentController.advanceLevel);
 
-// PUT update student
-router.put('/:id', studentController.updateStudent);
+// PUT update student (with optional photo upload)
+router.put('/:id', upload.single('photo'), studentController.updateStudent);
 
 // DELETE student
 router.delete('/:id', studentController.deleteStudent);

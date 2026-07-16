@@ -1,5 +1,7 @@
 const Student = require('../models/student.model');
 const Batch = require('../models/Batch.model');
+const path = require('path');
+const fs = require('fs');
 
 /**
  * GET /api/students
@@ -79,7 +81,6 @@ exports.getStudentsByBatch = async (req, res) => {
   }
 };
 
-
 /**
  * GET /api/students/:id
  * Get a single student by ID
@@ -96,7 +97,6 @@ exports.getStudentById = async (req, res) => {
       });
     }
     
-    // Get level details
     const levelDetails = student.getCurrentLevelDetails();
     
     res.json({
@@ -129,7 +129,6 @@ exports.startLevelJourney = async (req, res) => {
       });
     }
     
-    // Check if student is already started
     if (student.currentLevel !== 0) {
       return res.status(400).json({
         success: false,
@@ -138,7 +137,6 @@ exports.startLevelJourney = async (req, res) => {
       });
     }
     
-    // Start the journey
     await student.startLevelJourney();
     
     res.json({
@@ -163,7 +161,7 @@ exports.startLevelJourney = async (req, res) => {
 exports.advanceLevel = async (req, res) => {
   try {
     const { id } = req.params;
-    const { force } = req.body; // Allow force advance even if not in batch
+    const { force } = req.body;
     
     const student = await Student.findById(id);
     if (!student) {
@@ -173,7 +171,6 @@ exports.advanceLevel = async (req, res) => {
       });
     }
     
-    // Check if student is at max level
     if (student.currentLevel >= 12) {
       return res.status(400).json({
         success: false,
@@ -181,7 +178,6 @@ exports.advanceLevel = async (req, res) => {
       });
     }
     
-    // Check if student has started
     if (student.currentLevel === 0) {
       return res.status(400).json({
         success: false,
@@ -189,7 +185,6 @@ exports.advanceLevel = async (req, res) => {
       });
     }
     
-    // Advance the level
     const result = await student.advanceLevel();
     
     res.json({
@@ -274,13 +269,8 @@ exports.getLevelStats = async (req, res) => {
       ])
     ]);
     
-    // Get students with level 0 (newbies)
     const newbies = await Student.countDocuments({ currentLevel: 0 });
-    
-    // Get graduated students
     const graduated = await Student.countDocuments({ enrollmentStatus: 'graduated' });
-    
-    // Get active students
     const active = await Student.countDocuments({ 
       enrollmentStatus: 'active',
       currentLevel: { $gt: 0 }
@@ -315,38 +305,150 @@ exports.getLevelStats = async (req, res) => {
 /**
  * PUT /api/students/:id
  * Update a student (admin only)
+ * Handles:
+ *   - Regular field updates
+ *   - Batch transfer (with capacity check)
+ *   - Photo upload
  */
 exports.updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
     
-    // Prevent setting level to 0 via update (must use start-level endpoint)
+    // Parse updates from either FormData or JSON
+    let updates = {};
+    let photoFile = null;
+    
+    if (req.file) {
+      // FormData with file upload
+      photoFile = req.file;
+      // Check if data was sent as JSON string in the 'data' field
+      if (req.body.data) {
+        try {
+          updates = JSON.parse(req.body.data);
+        } catch (e) {
+          // If parsing fails, use the body as is
+          updates = { ...req.body };
+          delete updates.photo;
+        }
+      } else {
+        // Use the body directly
+        updates = { ...req.body };
+        delete updates.photo;
+      }
+    } else {
+      // JSON request - use body directly
+      updates = req.body;
+    }
+
+    console.log('📝 Updates received:', updates);
+
+    // ─── VALIDATE ──────────────────────────────────────────────────────
     if (updates.currentLevel === 0) {
       return res.status(400).json({
         success: false,
         error: 'Cannot set level to 0. Use the "Start Level Journey" endpoint instead.'
       });
     }
-    
-    const student = await Student.findByIdAndUpdate(
-      id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    ).populate('batchId');
-    
+
+    const student = await Student.findById(id);
     if (!student) {
       return res.status(404).json({
         success: false,
         error: 'Student not found'
       });
     }
-    
+
+    // ─── BATCH TRANSFER LOGIC ──────────────────────────────────────────
+    if (updates.batchId && updates.batchId !== String(student.batchId?._id || student.batchId || '')) {
+      const targetBatch = await Batch.findById(updates.batchId);
+      if (!targetBatch) {
+        return res.status(404).json({
+          success: false,
+          error: 'Target batch not found'
+        });
+      }
+
+      const isAlreadyInTarget = targetBatch.enrolledStudents.some(
+        s => String(s) === String(student._id)
+      );
+      
+      if (!isAlreadyInTarget && targetBatch.enrolledStudents.length >= targetBatch.capacity) {
+        return res.status(400).json({
+          success: false,
+          error: 'The selected batch is full. Please choose another batch.'
+        });
+      }
+
+      if (student.batchId) {
+        await Batch.findByIdAndUpdate(student.batchId, {
+          $pull: { enrolledStudents: student._id }
+        });
+      }
+
+      if (!isAlreadyInTarget) {
+        await Batch.findByIdAndUpdate(targetBatch._id, {
+          $addToSet: { enrolledStudents: student._id }
+        });
+      }
+
+      student.batchId = targetBatch._id;
+      student.dayId = targetBatch.dayId;
+      student.time = targetBatch.time;
+      student.classType = targetBatch.type;
+      student.batchJoinedDate = new Date();
+    }
+
+    // ─── PHOTO UPDATE ───────────────────────────────────────────────────
+    if (photoFile) {
+      const photoUrl = `/uploads/${photoFile.filename}`;
+      
+      if (student.photoUrl) {
+        const oldPhotoPath = path.join(__dirname, '..', student.photoUrl);
+        if (fs.existsSync(oldPhotoPath)) {
+          try {
+            fs.unlinkSync(oldPhotoPath);
+          } catch (unlinkError) {
+            console.warn('Could not delete old photo:', unlinkError.message);
+          }
+        }
+      }
+      
+      student.photoUrl = photoUrl;
+    }
+
+    // ─── UPDATE OTHER FIELDS ────────────────────────────────────────────
+    const allowedFields = [
+      'childName', 'childAge', 'dateOfBirth', 'childClass', 'schoolName',
+      'parentName', 'email', 'contact1', 'contact2', 'classType', 'dayId',
+      'time', 'kitOptIn', 'paymentStatus', 'paymentMethod', 'amountPaid',
+      'currentLevel', 'enrollmentStatus', 'status'
+    ];
+
+    allowedFields.forEach(field => {
+      if (updates[field] !== undefined && updates[field] !== '') {
+        if (field === 'dateOfBirth' && updates[field]) {
+          const dob = new Date(updates[field]);
+          if (!isNaN(dob.getTime())) {
+            student[field] = dob;
+          }
+        } else if (field === 'kitOptIn') {
+          student[field] = updates[field] === true || updates[field] === 'true';
+        } else {
+          student[field] = updates[field];
+        }
+      }
+    });
+
+    // ─── SAVE ──────────────────────────────────────────────────────────────
+    await student.save();
+    await student.populate('batchId');
+
     res.json({
       success: true,
       student,
       levelDetails: student.getCurrentLevelDetails()
     });
+
   } catch (error) {
     console.error('Update Student Error:', error);
     res.status(500).json({
@@ -389,7 +491,6 @@ exports.deleteStudent = async (req, res) => {
  */
 exports.getLevelConfig = async (req, res) => {
   try {
-    // Define level details
     const levels = [];
     for (let i = 0; i <= 12; i++) {
       if (i === 0) {
