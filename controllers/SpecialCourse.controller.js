@@ -12,27 +12,27 @@ const razorpay = new Razorpay({
 });
 
 // ==================== CONSTANTS ====================
-const BATCH_CAPACITY = 10;
+const BATCH_CAPACITY = 30;
 const MAX_PENDING_MINUTES = 15;
 const DELETE_PENDING_AFTER_MINUTES = 10; // Delete pending registrations after 10 minutes
 const CLEANUP_INTERVAL_MINUTES = 5; // Run cleanup every 5 minutes
-const WORKSHOP_FEE = 499; // Default workshop fee for statistics
+const WORKSHOP_FEE = 399; // Default workshop fee for statistics
 
 // ==================== HELPER FUNCTIONS ====================
 
-// Generate unique registration ID with format LS-SC26-00001
+// Generate unique registration ID with format LS-WS26-00001
 const generateRegistrationId = async () => {
     try {
         // Find the latest registration ID for this workshop
         const latestRegistration = await SpecialCourse.findOne({
-            registrationId: /^LS-SC26-\d{5}$/
+            registrationId: /^LS-WS26-\d{5}$/
         }).sort({ registrationId: -1 }).select('registrationId');
 
         let nextNumber = 1;
         
         if (latestRegistration && latestRegistration.registrationId) {
-            // Extract the number from the last ID (e.g., "LS-SC26-00042" -> 42)
-            const match = latestRegistration.registrationId.match(/LS-SC26-(\d{5})$/);
+            // Extract the number from the last ID (e.g., "LS-WS26-00042" -> 42)
+            const match = latestRegistration.registrationId.match(/LS-WS26-(\d{5})$/);
             if (match) {
                 nextNumber = parseInt(match[1], 10) + 1;
             }
@@ -40,11 +40,11 @@ const generateRegistrationId = async () => {
 
         // Format with leading zeros (e.g., 1 -> "00001")
         const paddedNumber = String(nextNumber).padStart(5, '0');
-        return `LS-SC26-${paddedNumber}`;
+        return `LS-WS26-${paddedNumber}`;
     } catch (error) {
         console.error('❌ Error generating registration ID:', error);
         // Fallback to timestamp-based ID if database query fails
-        return 'LS-SC26-' + Date.now().toString().slice(-5);
+        return 'LS-WS26-' + Date.now().toString().slice(-5);
     }
 };
 
@@ -190,7 +190,7 @@ const checkSlotAvailability = async (carnivalName, batchName, selectedDate) => {
         console.log(`⌛ Expired pending registrations count: ${expiredPendingCount}`);
 
         const dateString = displayDate.toISOString().split('T')[0];
-        const isOnline = carnivalName.includes('Summer') ? false : dateString === '2026-01-25';
+        const isOnline = carnivalName.includes('Online');
         const effectiveCapacity = isOnline ? 9999 : BATCH_CAPACITY;
 
         // Total registered count (paid + active pending)
@@ -775,14 +775,9 @@ exports.createOrder = async (req, res) => {
             });
         }
 
-        // Calculate amount based on carnival and material type
-        // Summer Camp = 2999, RD Special (Online) = 299, RD Special (Offline) = 499
-        let amount = 299;
-        if (registration.carnivalName.includes('Summer')) {
-            amount = 2999;
-        } else {
-            amount = registration.materialType ? 499 : 299;
-        }
+        // Calculate amount based on carnival
+        // Strawberry Cottage Workshop = 399
+        let amount = 399;
         
         console.log(`💰 Creating order for ${registrationId}: ₹${amount}`);
 
@@ -1004,12 +999,7 @@ exports.verifyPayment = async (req, res) => {
         }
 
         // Calculate amount dynamically
-        let amount = 299;
-        if (registration.carnivalName.includes('Summer')) {
-            amount = 2999;
-        } else {
-            amount = registration.materialType ? 499 : 299;
-        }
+        let amount = 399;
         console.log(`💰 Final amount verified: ₹${amount}`);
 
         // --- FETCH ACTUAL PAYMENT DETAILS FROM RAZORPAY ---
@@ -2058,6 +2048,7 @@ exports.getRegistrationById = async (req, res) => {
       batchTime: extractBatchTime(registration.selectedBatch),
       payment: payment ? {
         razorpay_payment_id: payment.razorpay_payment_id,
+        razorpay_order_id: payment.razorpay_order_id,
         amount: payment.amount,
         currency: payment.currency,
         status: payment.status,

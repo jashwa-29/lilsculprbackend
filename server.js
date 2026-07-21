@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 const helmet = require('helmet');
 const morgan = require('morgan');
-
+ 
 // Load environment variables
 dotenv.config();
 console.log('DEBUG: Mongo URI loaded:', process.env.MONGO_URI ? 'YES (First 20 chars: ' + process.env.MONGO_URI.substring(0, 20) + '...)' : 'NO (Undefined)');
