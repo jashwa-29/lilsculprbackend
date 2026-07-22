@@ -700,6 +700,214 @@ class EmailService {
       return { success: false, error: error.message };
     }
   }
+
+  async sendRegistrationConfirmation(toEmail, data) {
+    try {
+      console.log(`📧 Sending registration confirmation to ${toEmail}`);
+
+      const mailOptions = {
+        from: this.from,
+        to: toEmail,
+        subject: `✅ Registration Confirmed - ${data.carnivalName} | ${data.registrationId}`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; background: #f9fafb; }
+            .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; }
+            .header { background: linear-gradient(135deg, #9C29B2 0%, #FF6B00 100%); color: white; padding: 40px; text-align: center; }
+            .header h1 { font-size: 28px; margin-bottom: 8px; }
+            .badge { display: inline-block; background: rgba(255,255,255,0.15); padding: 8px 20px; border-radius: 50px; font-size: 13px; font-weight: 600; margin-top: 16px; border: 1px solid rgba(255,255,255,0.2); }
+            .content { padding: 40px; }
+            .section { margin-bottom: 32px; }
+            .section-title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #f3f4f6; }
+            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            .info-label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+            .info-value { font-size: 15px; font-weight: 500; color: #111827; }
+            .payment-box { background: #f0f9ff; border: 1px solid #e0f2fe; border-radius: 12px; padding: 24px; margin-top: 20px; }
+            .payment-amount { font-size: 32px; font-weight: 700; color: #0369a1; margin: 8px 0; }
+            .status-paid { display: inline-flex; align-items: center; background: #dcfce7; color: #166534; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+            .footer { text-align: center; padding: 24px; color: #9ca3af; font-size: 12px; border-top: 1px solid #f3f4f6; }
+          </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🎨 Registration Confirmed!</h1>
+                <p>Thank you for registering with Lil Sculpr Clay Academy</p>
+                <div class="badge">${data.registrationId}</div>
+              </div>
+              <div class="content">
+                <div class="section">
+                  <div class="section-title">👤 Participant Details</div>
+                  <div class="grid-2">
+                    <div>
+                      <div class="info-label">Parent Name</div>
+                      <div class="info-value">${data.parentName}</div>
+                    </div>
+                    <div>
+                      <div class="info-label">Child Name</div>
+                      <div class="info-value">${data.childName}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="section">
+                  <div class="section-title">🎪 Workshop Details</div>
+                  <div class="grid-2">
+                    <div>
+                      <div class="info-label">Workshop</div>
+                      <div class="info-value">${data.carnivalName}</div>
+                    </div>
+                    <div>
+                      <div class="info-label">Date</div>
+                      <div class="info-value">${data.date}</div>
+                    </div>
+                    <div>
+                      <div class="info-label">Time</div>
+                      <div class="info-value">${data.batchTime}</div>
+                    </div>
+                    <div>
+                      <div class="info-label">Batch</div>
+                      <div class="info-value">${data.batch}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="payment-box">
+                  <div class="section-title" style="border-bottom: none; margin-bottom: 8px;">💳 Payment Details</div>
+                  <div class="status-paid">✓ Payment Successful</div>
+                  <div class="payment-amount">₹${data.amount}</div>
+                  <div class="grid-2">
+                    <div>
+                      <div class="info-label">Payment ID</div>
+                      <div class="info-value" style="font-family: monospace; font-size: 13px;">${data.paymentId}</div>
+                    </div>
+                    <div>
+                      <div class="info-label">Paid On</div>
+                      <div class="info-value">${data.paymentDate} at ${data.paymentTime}</div>
+                    </div>
+                  </div>
+                </div>
+                <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
+                  📍 <strong>Venue:</strong> 468 A, C sector, 2nd Street, AE Block, Anna Nagar West Extension, Chennai - 600101
+                </p>
+                <p style="color: #6b7280; font-size: 14px;">
+                  For any queries, contact us at <strong>+91 96 00 44 31 85</strong> or <strong>lilsculpr@gmail.com</strong>
+                </p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Clay Academy. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Registration confirmation email sent to ${toEmail}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Registration confirmation email error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async sendAdminNotification(registration) {
+    try {
+      console.log(`📧 Sending admin notification for ${registration.registrationId}`);
+
+      if (!this.adminEmail) {
+        console.warn('⚠️ ADMIN_EMAIL not configured — skipping admin notification');
+        return { success: false, error: 'ADMIN_EMAIL not configured' };
+      }
+
+      const mailOptions = {
+        from: this.from,
+        to: this.adminEmail,
+        subject: `🆕 New Registration - ${registration.carnivalName} | ${registration.registrationId}`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937; background: #f9fafb; }
+            .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; }
+            .header { background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); color: white; padding: 32px; text-align: center; }
+            .header h1 { font-size: 24px; }
+            .content { padding: 32px; }
+            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+            .label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+            .value { font-size: 15px; font-weight: 500; color: #111827; margin-bottom: 12px; }
+            .footer { text-align: center; padding: 20px; color: #9ca3af; font-size: 12px; border-top: 1px solid #f3f4f6; }
+          </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🆕 New Workshop Registration</h1>
+                <p style="opacity: 0.9; margin-top: 8px;">${registration.registrationId}</p>
+              </div>
+              <div class="content">
+                <div class="grid-2">
+                  <div>
+                    <div class="label">Parent Name</div>
+                    <div class="value">${registration.parentName}</div>
+                  </div>
+                  <div>
+                    <div class="label">Phone</div>
+                    <div class="value">${registration.phone || registration.contact1}</div>
+                  </div>
+                  <div>
+                    <div class="label">Email</div>
+                    <div class="value">${registration.email}</div>
+                  </div>
+                  <div>
+                    <div class="label">Child Name</div>
+                    <div class="value">${registration.childName}</div>
+                  </div>
+                  <div>
+                    <div class="label">Child Age</div>
+                    <div class="value">${registration.childAge}</div>
+                  </div>
+                  <div>
+                    <div class="label">Workshop</div>
+                    <div class="value">${registration.carnivalName}</div>
+                  </div>
+                  <div>
+                    <div class="label">Date</div>
+                    <div class="value">${registration.selectedDate ? new Date(registration.selectedDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''}</div>
+                  </div>
+                  <div>
+                    <div class="label">Time</div>
+                    <div class="value">${registration.batchTime}</div>
+                  </div>
+                </div>
+                <p style="margin-top: 16px; padding: 12px; background: #fef3c7; border-radius: 8px; font-size: 13px; color: #92400e;">
+                  ⚡ This registration has been paid and confirmed. Login to admin panel for more details.
+                </p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Clay Academy</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Admin notification sent for ${registration.registrationId}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Admin notification error:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = new EmailService();

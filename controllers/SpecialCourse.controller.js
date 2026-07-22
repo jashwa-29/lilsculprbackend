@@ -12,39 +12,61 @@ const razorpay = new Razorpay({
 });
 
 // ==================== CONSTANTS ====================
-const BATCH_CAPACITY = 30;
+const DEFAULT_BATCH_CAPACITY = 30;
 const MAX_PENDING_MINUTES = 15;
-const DELETE_PENDING_AFTER_MINUTES = 10; // Delete pending registrations after 10 minutes
-const CLEANUP_INTERVAL_MINUTES = 5; // Run cleanup every 5 minutes
-const WORKSHOP_FEE = 399; // Default workshop fee for statistics
+const DELETE_PENDING_AFTER_MINUTES = 10;
+const CLEANUP_INTERVAL_MINUTES = 5;
+
+const WORKSHOP_CONFIG = {
+    "Strawberry Cottage Workshop": {
+        fee: 399,
+        capacity: 30,
+        prefix: "LS-WS26",
+        dates: ["2026-07-26"]
+    },
+    "Koi Fish Frame Art": {
+        fee: 499,
+        capacity: 30,
+        prefix: "LS-KF26",
+        dates: ["2026-07-27"]
+    }
+};
+
+const getWorkshopConfig = (carnivalName) => {
+    const config = WORKSHOP_CONFIG[carnivalName];
+    if (config) return config;
+    // Fallback for unknown workshops
+    return { fee: 399, capacity: DEFAULT_BATCH_CAPACITY, prefix: "LS-WS26", dates: [] };
+};
 
 // ==================== HELPER FUNCTIONS ====================
 
-// Generate unique registration ID with format LS-WS26-00001
-const generateRegistrationId = async () => {
+// Generate unique registration ID with workshop-specific prefix
+const generateRegistrationId = async (carnivalName) => {
     try {
-        // Find the latest registration ID for this workshop
+        const config = getWorkshopConfig(carnivalName);
+        const prefix = config.prefix;
+        const regex = new RegExp(`^${prefix}-\\d{5}$`);
+        
         const latestRegistration = await SpecialCourse.findOne({
-            registrationId: /^LS-WS26-\d{5}$/
+            registrationId: regex
         }).sort({ registrationId: -1 }).select('registrationId');
 
         let nextNumber = 1;
         
         if (latestRegistration && latestRegistration.registrationId) {
-            // Extract the number from the last ID (e.g., "LS-WS26-00042" -> 42)
-            const match = latestRegistration.registrationId.match(/LS-WS26-(\d{5})$/);
+            const match = latestRegistration.registrationId.match(new RegExp(`${prefix}-(\\d{5})$`));
             if (match) {
                 nextNumber = parseInt(match[1], 10) + 1;
             }
         }
 
-        // Format with leading zeros (e.g., 1 -> "00001")
         const paddedNumber = String(nextNumber).padStart(5, '0');
-        return `LS-WS26-${paddedNumber}`;
+        return `${prefix}-${paddedNumber}`;
     } catch (error) {
         console.error('❌ Error generating registration ID:', error);
-        // Fallback to timestamp-based ID if database query fails
-        return 'LS-WS26-' + Date.now().toString().slice(-5);
+        const config = getWorkshopConfig(carnivalName);
+        return config.prefix + '-' + Date.now().toString().slice(-5);
     }
 };
 
@@ -191,7 +213,8 @@ const checkSlotAvailability = async (carnivalName, batchName, selectedDate) => {
 
         const dateString = displayDate.toISOString().split('T')[0];
         const isOnline = carnivalName.includes('Online');
-        const effectiveCapacity = isOnline ? 9999 : BATCH_CAPACITY;
+        const workshopConfig = getWorkshopConfig(carnivalName);
+        const effectiveCapacity = isOnline ? 9999 : workshopConfig.capacity;
 
         // Total registered count (paid + active pending)
         const registeredCount = paidCount + activePendingCount;
@@ -261,9 +284,9 @@ const checkSlotAvailability = async (carnivalName, batchName, selectedDate) => {
             batch: batchName,
             date: selectedDate,
             registeredCount: 0,
-            availableSlots: BATCH_CAPACITY,
+            availableSlots: getWorkshopConfig(carnivalName).capacity,
             isFull: false,
-            capacity: BATCH_CAPACITY,
+            capacity: getWorkshopConfig(carnivalName).capacity,
             status: 'error',
             statusEmoji: '❌',
             statusColor: 'red',
@@ -670,7 +693,7 @@ exports.register = async (req, res) => {
         const batchTime = extractBatchTime(selectedBatch);
 
         // Create registration
-        const registrationId = await generateRegistrationId();
+        const registrationId = await generateRegistrationId(carnivalName);
         const now = new Date();
         const paymentExpiresAt = new Date(now.getTime() + (MAX_PENDING_MINUTES * 60 * 1000));
         
@@ -776,10 +799,10 @@ exports.createOrder = async (req, res) => {
         }
 
         // Calculate amount based on carnival
-        // Strawberry Cottage Workshop = 399
-        let amount = 399;
+        const workshopConfig = getWorkshopConfig(registration.carnivalName);
+        let amount = workshopConfig.fee;
         
-        console.log(`💰 Creating order for ${registrationId}: ₹${amount}`);
+        console.log(`💰 Creating order for ${registrationId}: ₹${amount} (${registration.carnivalName})`);
 
         const options = {
             amount: amount * 100, // amount in the smallest currency unit
@@ -999,8 +1022,9 @@ exports.verifyPayment = async (req, res) => {
         }
 
         // Calculate amount dynamically
-        let amount = 399;
-        console.log(`💰 Final amount verified: ₹${amount}`);
+        const workshopConfig = getWorkshopConfig(registration.carnivalName);
+        let amount = workshopConfig.fee;
+        console.log(`💰 Final amount verified: ₹${amount} (${registration.carnivalName})`);
 
         // --- FETCH ACTUAL PAYMENT DETAILS FROM RAZORPAY ---
         let actualPaymentMethod = 'card';
@@ -1177,7 +1201,7 @@ exports.verifyPayment = async (req, res) => {
                 timestamp: now.toISOString(),
                 slotInfo: {
                     currentAvailable: slotInfo.availableSlots - 1,
-                    capacity: BATCH_CAPACITY,
+                    capacity: workshopConfig.capacity,
                     registeredCount: slotInfo.registeredCount + 1
                 }
             }
@@ -1543,6 +1567,13 @@ exports.getStatistics = async (req, res) => {
 
         console.log(`✅ Statistics calculated successfully`);
         
+        // Calculate total revenue from paid registrations across all carnivals
+        let totalRevenue = 0;
+        for (const carnival of carnivalStats) {
+            const config = getWorkshopConfig(carnival._id);
+            totalRevenue += carnival.paid * config.fee;
+        }
+
         res.json({
             success: true,
             data: {
@@ -1553,14 +1584,14 @@ exports.getStatistics = async (req, res) => {
                     expiredRegistrations: expiredRegistrations,
                     successRate: successRate,
                     conversionRate: conversionRate,
-                    totalRevenue: paidRegistrations * WORKSHOP_FEE
+                    totalRevenue: totalRevenue
                 },
                 carnivalStatistics: carnivalStats,
                 systemSettings: {
                     maxPendingMinutes: MAX_PENDING_MINUTES,
                     deletePendingAfterMinutes: DELETE_PENDING_AFTER_MINUTES,
-                    batchCapacity: BATCH_CAPACITY,
-                    workshopFee: WORKSHOP_FEE,
+                    batchCapacity: DEFAULT_BATCH_CAPACITY,
+                    workshopFee: 399,
                     cleanupIntervalMinutes: CLEANUP_INTERVAL_MINUTES
                 },
                 timestamp: now.toISOString()
@@ -1667,7 +1698,7 @@ exports.getCarnivalStatistics = async (req, res) => {
                     paidRegistrations: paidForCarnival,
                     pendingRegistrations: pendingForCarnival,
                     expiredRegistrations: expiredForCarnival,
-                    revenue: paidForCarnival * WORKSHOP_FEE
+                    revenue: paidForCarnival * getWorkshopConfig(carnivalName).fee
                 },
                 dateStatistics: dateStats,
                 uniqueDates: dateStats.length,
@@ -1810,8 +1841,8 @@ exports.healthCheck = async (req, res) => {
                 maxPendingMinutes: MAX_PENDING_MINUTES,
                 deletePendingAfterMinutes: DELETE_PENDING_AFTER_MINUTES,
                 cleanupIntervalMinutes: CLEANUP_INTERVAL_MINUTES,
-                batchCapacity: BATCH_CAPACITY,
-                workshopFee: WORKSHOP_FEE,
+                batchCapacity: DEFAULT_BATCH_CAPACITY,
+                workshopFee: 399,
                 activeCarnivals: activeCarnivals.length,
                 nodeVersion: process.version,
                 environment: process.env.NODE_ENV || 'development'
