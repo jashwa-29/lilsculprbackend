@@ -26,8 +26,9 @@ const feePaymentRoutes = require('./routes/feePayment.routes');
 const galleryRoutes = require('./routes/gallery.routes');
 const compensationRequestRoutes = require('./routes/compensationRequest.routes');
 const categoryRoutes = require('./routes/category.routes');
-  
-const app = express();  
+const workshopRoutes = require('./routes/workshop.routes');
+
+const app = express();
              
 // Initialize cron jobs
 require('./services/cron.service');
@@ -92,6 +93,10 @@ const connectDB = async () => {
     // Seed admin user
     const seedAdmin = require('./seed/seedAdmin');
     await seedAdmin();
+
+    // Seed workshops
+    const seedWorkshops = require('./seed/seedWorkshops');
+    await seedWorkshops();
 
     // Listen to connection events
     mongoose.connection.on('error', (err) => {
@@ -202,6 +207,7 @@ app.use("/api/fee-payment", feePaymentRoutes);
 app.use("/api/gallery", galleryRoutes);
 app.use("/api/compensation-requests", compensationRequestRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use("/api/workshops", workshopRoutes);
 app.use("/api", migrationRoutes);
 
 // --- Static File Handling ---
@@ -243,15 +249,15 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong!',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
-});
-
+});    
+   
 // --- Graceful Shutdown ---
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully...');
   server.close(() => {
     console.log('Server closed');
     mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed');
+      console.log('MongoDB connection closed'); 
       process.exit(0);
     });
   });
