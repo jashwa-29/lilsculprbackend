@@ -29,6 +29,18 @@ const WORKSHOP_CONFIG = {
         capacity: 30,
         prefix: "LS-KF26",
         dates: ["2026-07-27"]
+    },
+    "Kids Fruit & Vegetable Clay Mirror Workshop": {
+        fee: 750,
+        capacity: 30,
+        prefix: "LS-KM26",
+        dates: ["2026-08-02"]
+    },
+    "Up, Up & Away! 3D Clay Canvas Workshop": {
+        fee: 699,
+        capacity: 30,
+        prefix: "LS-UA26",
+        dates: ["2026-08-01"]
     }
 };
 

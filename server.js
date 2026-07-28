@@ -260,8 +260,8 @@ process.on('SIGTERM', () => {
       console.log('MongoDB connection closed'); 
       process.exit(0);
     });
-  });
-});
+  }); 
+});    
 
 // --- Start Server ---
 const PORT = process.env.PORT || 5000;

@@ -85,7 +85,7 @@ const workshops = [
     shortDescription: 'Create a beautiful floating house with colorful balloons on a premium canvas.',
     description: 'Create a beautiful floating house with colorful balloons on a premium canvas. All materials, canvas, and expert guidance included!',
     price: 699,
-    date: new Date('2026-08-09'),
+    date: new Date('2026-08-01'),
     timeStart: '11:00 AM',
     timeEnd: '1:00 PM',
     duration: '2 Hours',
