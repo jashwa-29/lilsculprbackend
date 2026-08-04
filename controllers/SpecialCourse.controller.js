@@ -19,16 +19,16 @@ const CLEANUP_INTERVAL_MINUTES = 5;
 
 const WORKSHOP_CONFIG = {
     "Strawberry Cottage Workshop": {
-        fee: 399,
-        capacity: 30,
+        fee: 699,
+        capacity: 8,
         prefix: "LS-WS26",
-        dates: ["2026-07-26"]
+        dates: ["2026-08-08"]
     },
     "Koi Fish Frame Art": {
-        fee: 499,
-        capacity: 30,
+        fee: 599,
+        capacity: 8,
         prefix: "LS-KF26",
-        dates: ["2026-07-27"]
+        dates: ["2026-08-08"]
     },
     "Kids Fruit & Vegetable Clay Mirror Workshop": {
         fee: 750,
