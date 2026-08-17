@@ -146,6 +146,25 @@ const studentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Batch'
   },
+
+  // ═══ FLEXI-BATCH FLAG ═══
+  isFlexiBatch: {
+    type: Boolean,
+    default: false
+  },
+  flexiBatchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'FlexiBatch',
+    default: null
+  },
+  batchDisplayName: {
+    type: String,
+    default: ''
+  },
+  dayIdFull: {
+    type: String,
+    default: ''
+  },
   
   // ═══ LEVEL HISTORY - TRACKS COMPLETED LEVELS ═══
   levelHistory: [{
@@ -189,6 +208,7 @@ studentSchema.index({ enrollmentStatus: 1, batchId: 1 });
 studentSchema.index({ enrollmentStatus: 1, currentLevel: 1 });
 studentSchema.index({ batchId: 1, batchJoinedDate: 1 });
 studentSchema.index({ currentLevel: 1 });
+studentSchema.index({ isFlexiBatch: 1, flexiBatchId: 1 });
 
 // ═══ PRE-SAVE HOOK ═══
 studentSchema.pre('save', function(next) {
@@ -216,8 +236,8 @@ studentSchema.virtual('levelProgress').get(function() {
   if (this.currentLevel === 0) return { status: 'not_started', label: 'Newbie' };
   if (this.enrollmentStatus === 'graduated') return { status: 'graduated', label: 'Graduated!' };
   if (this.enrollmentStatus === 'paused') return { status: 'paused', label: 'Paused' };
-  
-  const completed = this.levelHistory.filter(h => h.completedDate).length;
+
+  const completed = this.levelHistory ? this.levelHistory.filter(h => h.completedDate).length : 0;
   return {
     status: 'in_progress',
     label: `Level ${this.currentLevel}`,
@@ -353,5 +373,103 @@ studentSchema.methods.getCurrentLevelDetails = function() {
     progress: Math.round((completedCount / 12) * 100)
   };
 };
+
+// ═══ VIRTUAL: Batch display name ═══
+// Flexi-batch students show their actual selected days & time as their batch details
+const DAY_SHORT_MAP = {
+  'Monday': 'Mon',
+  'Tuesday': 'Tue',
+  'Wednesday': 'Wed',
+  'Thursday': 'Thu',
+  'Friday': 'Fri',
+  'Saturday': 'Sat',
+  'Sunday': 'Sun'
+};
+
+// ═══ HELPER: Is flexiBatchId populated with a schedule? ═══
+// NOTE: flexiBatchId may be null, a bare ObjectId (string), or a populated object.
+const isFlexiPopulated = (flexiBatchId) => {
+  return flexiBatchId && typeof flexiBatchId === 'object' && Array.isArray(flexiBatchId.schedule);
+};
+
+// Get short day names from flexi schedule (e.g., "Tue/Wed")
+studentSchema.methods.getFlexiDayShort = function() {
+  if (!this.isFlexiBatch) return this.dayId || '';
+  if (isFlexiPopulated(this.flexiBatchId)) {
+    const days = this.flexiBatchId.schedule.map(s => DAY_SHORT_MAP[s.day] || s.day);
+    return days.join('/');
+  }
+  return this.dayId || '';
+};
+
+// Get full day names from flexi schedule (e.g., "Tuesday & Wednesday")
+studentSchema.methods.getFlexiDayFull = function() {
+  if (!this.isFlexiBatch) return this.dayIdFull || this.dayId || '';
+  if (isFlexiPopulated(this.flexiBatchId)) {
+    const days = this.flexiBatchId.schedule.map(s => s.day);
+    return days.join(' & ');
+  }
+  return this.dayIdFull || this.dayId || '';
+};
+
+// Virtual: short day names, e.g., "Tue/Wed"
+studentSchema.virtual('flexiDayShort').get(function() {
+  return this.getFlexiDayShort();
+});
+
+// Virtual: full day names, e.g., "Tuesday & Wednesday"
+studentSchema.virtual('flexiDayFull').get(function() {
+  return this.getFlexiDayFull();
+});
+
+// Virtual: the flexi schedule array ([] when unpopulated)
+studentSchema.virtual('flexiSchedule').get(function() {
+  if (isFlexiPopulated(this.flexiBatchId)) {
+    return this.flexiBatchId.schedule;
+  }
+  return [];
+});
+
+// Virtual: is this student on a flexi-batch?
+studentSchema.virtual('hasFlexiBatch').get(function() {
+  return this.isFlexiBatch === true;
+});
+
+// Short display, e.g., "Tue/Wed at 11:00 AM - 12:00 PM"
+studentSchema.virtual('batchDisplay').get(function() {
+  if (this.isFlexiBatch) {
+    const days = this.getFlexiDayShort();
+    const time = this.time || '';
+    return days && time ? `${days} at ${time}` : 'Flexi-Batch';
+  }
+  if (this.batchId) {
+    if (typeof this.batchId === 'object' && this.batchId.dayId) {
+      return `${this.batchId.dayId} · ${this.batchId.time || ''}`.trim();
+    }
+    return 'Assigned';
+  }
+  return 'Unassigned';
+});
+
+// Full display, e.g., "Tuesday & Wednesday at 11:00 AM - 12:00 PM"
+// (stored on save by controllers; falls back to computed values if missing)
+studentSchema.virtual('batchDisplayFull').get(function() {
+  if (this.isFlexiBatch) {
+    const days = this.getFlexiDayFull();
+    const time = this.time || '';
+    return days && time ? `${days} at ${time}` : 'Flexi-Batch';
+  }
+  if (this.batchId) {
+    if (typeof this.batchId === 'object' && this.batchId.dayId) {
+      return `${this.batchId.dayId} · ${this.batchId.time || ''}`.trim();
+    }
+    return 'Assigned';
+  }
+  return 'Unassigned';
+});
+
+// Ensure virtuals are included in JSON output
+studentSchema.set('toJSON', { virtuals: true });
+studentSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Student', studentSchema);

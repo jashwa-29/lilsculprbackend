@@ -11,6 +11,7 @@ router.post('/verify', feePaymentController.verifyFeePayment);
 // Protected routes (admin only)
 router.get('/history/:studentId', protect, feePaymentController.getFeeHistory);
 router.get('/summary', protect, feePaymentController.getPaymentSummary);
+router.get('/revenue/detailed', protect, feePaymentController.getDetailedRevenue);
 
 // Admin / Utility routes (No auth required for Postman testing as requested)
 router.get('/all', feePaymentController.getAllFeeRecords);

@@ -908,6 +908,98 @@ class EmailService {
       return { success: false, error: error.message };
     }
   }
+
+  /**
+   * Send flexi-batch confirmation email to parent
+   */
+  async sendFlexiBatchConfirmation(student, flexiBatch) {
+    if (this.isMock) {
+      console.log(`[MOCK EMAIL] Flexi-batch confirmation to ${student.email}`);
+      return { success: true, messageId: `mock-${Date.now()}` };
+    }
+
+    try {
+      const scheduleList = flexiBatch.schedule.map(slot =>
+        `<li><strong>${slot.day}</strong> — ${slot.time}</li>`
+      ).join('');
+
+      const classTypeLabel = flexiBatch.classType === 'offline' ? '🏫 Offline (Chennai)' : '💻 Online (Live)';
+      const daysText = flexiBatch.schedule.map(s => s.day).join(' & ');
+
+      const mailOptions = {
+        from: this.from,
+        to: student.email,
+        subject: `✅ Flexi-Batch Enrollment Confirmed - ${student.childName} | Lil Sculpr Academy`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #9C29B2, #B84DD1); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+              .content { padding: 30px; background: #f9f9f9; }
+              .schedule-box { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0; }
+              .schedule-box ul { list-style: none; padding: 0; }
+              .schedule-box li { padding: 8px 0; border-bottom: 1px solid #f0edf5; }
+              .schedule-box li:last-child { border-bottom: none; }
+              .badge { display: inline-block; background: #9C29B2; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px; }
+              .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>✅ Flexi-Batch Enrollment Confirmed!</h2>
+                <p>Lil Sculpr Clay Modelling Academy</p>
+              </div>
+              <div class="content">
+                <p>Dear <strong>${student.parentName}</strong>,</p>
+
+                <p>We are pleased to confirm your child's enrollment in our <strong>Flexi-Batch Program</strong>.</p>
+
+                <div class="schedule-box">
+                  <h3>📅 Your Selected Schedule</h3>
+                  <p><strong>Class Type:</strong> ${classTypeLabel}</p>
+                  <p><strong>Student:</strong> ${student.childName}</p>
+                  <p><strong>Enrollment ID:</strong> ${student.enrollmentId}</p>
+                  <p><strong>Selected Days:</strong> ${daysText}</p>
+                  <ul>
+                    ${scheduleList}
+                  </ul>
+                </div>
+
+                <p><strong>What's Next?</strong></p>
+                <ul>
+                  <li>You can attend classes on your selected days (${daysText}) at your chosen time slot</li>
+                  <li>No advance booking required — just come to any of your selected slots</li>
+                  <li>Our team will be available during all your selected time slots</li>
+                  <li>Lunch break is from 1:00 PM - 2:00 PM (no classes during this time)</li>
+                </ul>
+
+                <p>If you have any questions, feel free to reply to this email or contact us at <strong>${process.env.EMAIL_USER || 'lilsculpr@gmail.com'}</strong>.</p>
+
+                <p>Best regards,<br><strong>The Lil Sculpr Team</strong></p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Lil Sculpr Academy. All rights reserved.</p>
+                <p>468 A, C sector, 2nd Street, AE Block, Anna Nagar West Extension, Chennai - 600101</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      };
+
+      const info = await this.transporter.sendMail(mailOptions);
+      console.log(`✅ Flexi-batch confirmation sent to ${student.email}`);
+      return { success: true, messageId: info.messageId };
+
+    } catch (error) {
+      console.error('❌ Flexi-batch confirmation email error:', error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 module.exports = new EmailService();

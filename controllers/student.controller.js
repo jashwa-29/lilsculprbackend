@@ -3,6 +3,17 @@ const Batch = require('../models/Batch.model');
 const path = require('path');
 const fs = require('fs');
 
+// Short day-name mapping for batch display (e.g., "Tue/Wed")
+const DAY_SHORT_MAP = {
+  'Monday': 'Mon',
+  'Tuesday': 'Tue',
+  'Wednesday': 'Wed',
+  'Thursday': 'Thu',
+  'Friday': 'Fri',
+  'Saturday': 'Sat',
+  'Sunday': 'Sun'
+};
+
 /**
  * GET /api/students
  * Get all students with optional filters
@@ -29,11 +40,51 @@ exports.getAllStudents = async (req, res) => {
     
     const students = await Student.find(query)
       .populate('batchId')
+      .populate('flexiBatchId')
       .sort({ createdAt: -1 });
+    
+    // Format students with proper batch display
+    const formattedStudents = students.map(student => {
+      const studentObj = student.toObject();
+
+      // ═══ Flexi-batch student: show actual days & time as batch details ═══
+      if (student.isFlexiBatch && student.flexiBatchId) {
+        const flexi = student.flexiBatchId;
+        const daysFull = flexi.schedule.map(s => s.day);
+        const daysShort = daysFull.map(d => DAY_SHORT_MAP[d] || d);
+        const daysText = daysShort.join('/');        // e.g., "Tue/Wed"
+        const daysFullText = daysFull.join(' & ');   // e.g., "Tuesday & Wednesday"
+        const timeText = flexi.schedule[0]?.time || '';
+
+        studentObj.batchId = null; // Clear regular batch ID
+        studentObj.dayId = daysText; // Short display: "Tue/Wed"
+        studentObj.dayIdFull = daysFullText; // Full: "Tuesday & Wednesday"
+        studentObj.time = timeText; // Show actual time
+        studentObj.batchDisplay = `${daysText} at ${timeText}`;
+        studentObj.batchName = `${daysText} at ${timeText}`;
+        studentObj.batchDisplayFull = `${daysFullText} at ${timeText}`;
+        studentObj.batchType = 'flexi';
+        studentObj.classType = flexi.classType || student.classType;
+        studentObj.flexiSchedule = flexi.schedule;
+        studentObj.status = flexi.status;
+      } else if (student.batchId) {
+        // Regular batch student
+        studentObj.batchDisplay = `${student.batchId?.type || ''} ${student.batchId?.dayId || ''} ${student.batchId?.time || ''}`;
+        studentObj.batchName = `${student.batchId?.type || ''} ${student.batchId?.dayId || ''} ${student.batchId?.time || ''}`;
+        studentObj.batchType = 'regular';
+      } else {
+        // No batch assigned
+        studentObj.batchDisplay = 'Unassigned';
+        studentObj.batchName = 'Unassigned';
+        studentObj.batchType = 'none';
+      }
+
+      return studentObj;
+    });
     
     res.json({
       success: true,
-      students
+      students: formattedStudents
     });
   } catch (error) {
     console.error('Get All Students Error:', error);
@@ -52,8 +103,87 @@ exports.getStudentsByBatch = async (req, res) => {
   try {
     const { batchId } = req.params;
 
+    // ═══ Special case: batchId 'flexi' returns all flexi-batch students ═══
+    if (batchId === 'flexi') {
+      const students = await Student.find({
+        isFlexiBatch: true,
+        status: { $ne: 'cancelled' }
+      })
+        .populate('flexiBatchId')
+        .sort({ childName: 1 });
+
+      const formattedStudents = students.map(student => {
+        const flexi = student.flexiBatchId;
+        const daysFull = flexi?.schedule.map(s => s.day) || [];
+        const daysShort = daysFull.map(d => DAY_SHORT_MAP[d] || d);
+        const daysText = daysShort.join('/');
+        const daysFullText = daysFull.join(' & ');
+        const timeText = flexi?.schedule[0]?.time || '';
+
+        return {
+          ...student.toObject(),
+          dayId: daysText,
+          dayIdFull: daysFullText,
+          time: timeText,
+          batchDisplay: `${daysText} at ${timeText}`,
+          batchDisplayFull: `${daysFullText} at ${timeText}`,
+          batchType: 'flexi',
+          schedule: flexi?.schedule || []
+        };
+      });
+
+      return res.json({
+        success: true,
+        students: formattedStudents,
+        batch: {
+          _id: 'flexi',
+          type: 'flexi',
+          dayId: 'Flexi-Batch',
+          time: 'Flexible Schedule',
+          capacity: 999
+        }
+      });
+    }
+
     const batch = await Batch.findById(batchId);
     if (!batch) {
+      // ═══ Flexi-batch ID: return its single student with flexi formatting ═══
+      const FlexiBatch = require('../models/FlexiBatch.model');
+      const flexiBatch = await FlexiBatch.findById(batchId).populate('studentId');
+      if (flexiBatch && flexiBatch.studentId) {
+        const flexi = flexiBatch;
+        const daysFull = flexi.schedule.map(s => s.day);
+        const daysShort = daysFull.map(d => DAY_SHORT_MAP[d] || d);
+        const daysText = daysShort.join('/');
+        const daysFullText = daysFull.join(' & ');
+        const timeText = flexi.schedule[0]?.time || '';
+
+        const studentObj = flexi.studentId.toObject();
+        studentObj.batchId = null;
+        studentObj.dayId = daysText;
+        studentObj.dayIdFull = daysFullText;
+        studentObj.time = timeText;
+        studentObj.batchDisplay = `${daysText} at ${timeText}`;
+        studentObj.batchDisplayFull = `${daysFullText} at ${timeText}`;
+        studentObj.batchType = 'flexi';
+        studentObj.flexiBatchId = flexi._id;
+        studentObj.flexiSchedule = flexi.schedule;
+        studentObj.flexiStatus = flexi.status;
+        studentObj.flexiNotes = flexi.notes;
+
+        return res.json({
+          success: true,
+          students: [studentObj],
+          batch: {
+            _id: flexi._id,
+            type: 'flexi',
+            dayId: daysText,
+            dayIdFull: daysFullText,
+            time: timeText,
+            capacity: 999
+          }
+        });
+      }
       return res.status(404).json({ success: false, error: 'Batch not found' });
     }
 
@@ -82,13 +212,62 @@ exports.getStudentsByBatch = async (req, res) => {
 };
 
 /**
+ * GET /api/students/flexi
+ * Get all flexi-batch students
+ */
+exports.getFlexiStudents = async (req, res) => {
+  try {
+    const students = await Student.find({
+      isFlexiBatch: true,
+      status: { $ne: 'cancelled' }
+    })
+      .populate('flexiBatchId')
+      .sort({ childName: 1 });
+
+    const formattedStudents = students.map(student => {
+      const flexi = student.flexiBatchId;
+      const daysFull = flexi?.schedule.map(s => s.day) || [];
+      const daysShort = daysFull.map(d => DAY_SHORT_MAP[d] || d);
+      const daysText = daysShort.join('/');
+      const daysFullText = daysFull.join(' & ');
+      const timeText = flexi?.schedule[0]?.time || '';
+
+      return {
+        ...student.toObject(),
+        dayId: daysText,
+        dayIdFull: daysFullText,
+        time: timeText,
+        batchDisplay: `${daysText} at ${timeText}`,
+        batchDisplayFull: `${daysFullText} at ${timeText}`,
+        schedule: flexi?.schedule || [],
+        flexiStatus: flexi?.status || 'active',
+        flexiNotes: flexi?.notes || ''
+      };
+    });
+
+    res.json({
+      success: true,
+      students: formattedStudents,
+      count: formattedStudents.length
+    });
+  } catch (error) {
+    console.error('Get Flexi Students Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch flexi students'
+    });
+  }
+};
+
+/**
  * GET /api/students/:id
  * Get a single student by ID
  */
 exports.getStudentById = async (req, res) => {
   try {
     const student = await Student.findById(req.params.id)
-      .populate('batchId');
+      .populate('batchId')
+      .populate('flexiBatchId');
     
     if (!student) {
       return res.status(404).json({
@@ -98,10 +277,40 @@ exports.getStudentById = async (req, res) => {
     }
     
     const levelDetails = student.getCurrentLevelDetails();
-    
+
+    // Format student for response
+    const studentObj = student.toObject();
+
+    // ═══ Flexi-batch student: show actual days & time as batch details ═══
+    if (student.isFlexiBatch && student.flexiBatchId) {
+      const flexi = student.flexiBatchId;
+      const daysFull = flexi.schedule.map(s => s.day);
+      const daysShort = daysFull.map(d => DAY_SHORT_MAP[d] || d);
+      const daysText = daysShort.join('/');
+      const daysFullText = daysFull.join(' & ');
+      const timeText = flexi.schedule[0]?.time || '';
+
+      studentObj.batchId = null;
+      studentObj.dayId = daysText;
+      studentObj.dayIdFull = daysFullText;
+      studentObj.time = timeText;
+      studentObj.batchDisplay = `${daysText} at ${timeText}`;
+      studentObj.batchDisplayFull = `${daysFullText} at ${timeText}`;
+      studentObj.batchType = 'flexi';
+      studentObj.flexiSchedule = flexi.schedule;
+      studentObj.flexiStatus = flexi.status;
+      studentObj.flexiNotes = flexi.notes;
+    } else if (student.batchId) {
+      studentObj.batchDisplay = `${student.batchId?.type || ''} ${student.batchId?.dayId || ''} ${student.batchId?.time || ''}`;
+      studentObj.batchType = 'regular';
+    } else {
+      studentObj.batchDisplay = 'Unassigned';
+      studentObj.batchType = 'none';
+    }
+
     res.json({
       success: true,
-      student,
+      student: studentObj,
       levelDetails
     });
   } catch (error) {

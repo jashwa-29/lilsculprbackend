@@ -7,6 +7,8 @@ const Config = require('../models/config.model');
 const FeeRecord = require('../models/FeeRecord.model');
 const AttendanceRecord = require('../models/AttendanceRecord.model');
 const CompensationRecord = require('../models/CompensationRecord.model');
+const FlexiBatch = require('../models/FlexiBatch.model');
+const emailService = require('../services/email.service');
 const { syncStudentPaymentStatus } = require('../services/syncFeeStatus.service');
 
 // Initialize Razorpay
@@ -109,6 +111,46 @@ const generateEnrollmentId = async (retryCount = 0) => {
 const getCurrentMonthYear = () => {
   const d = new Date();
   return d.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+};
+
+/**
+ * Helper: Parse and validate a flexi-batch schedule from request body.
+ * Expected shape: [{ day, time, timeStart, timeEnd }, ...] — exactly 2 distinct days.
+ * Returns { schedule } on success, or { error } when invalid.
+ */
+const parseFlexiSchedule = (rawSchedule) => {
+  if (!rawSchedule) {
+    return { error: 'Flexi-batch schedule is required.' };
+  }
+
+  let schedule;
+  try {
+    schedule = typeof rawSchedule === 'string' ? JSON.parse(rawSchedule) : rawSchedule;
+  } catch (e) {
+    return { error: 'Invalid flexi-schedule format.' };
+  }
+
+  if (!Array.isArray(schedule) || schedule.length !== 2) {
+    return { error: 'Please select exactly 2 days for flexi-batch.' };
+  }
+
+  const validDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  for (const slot of schedule) {
+    if (!validDays.includes(slot.day)) {
+      return { error: `Invalid day: ${slot.day}. Must be a valid day of the week.` };
+    }
+    if (!slot.time || !slot.timeStart || !slot.timeEnd) {
+      return { error: 'Each schedule item must have time, timeStart, and timeEnd fields.' };
+    }
+  }
+
+  const uniqueDays = new Set(schedule.map(s => s.day));
+  if (uniqueDays.size !== 2) {
+    return { error: 'Please select 2 different days.' };
+  }
+
+  return { schedule };
 };
 
 /**
@@ -304,7 +346,10 @@ exports.submitEnrollment = async (req, res) => {
       slotKey,
       kitOptIn,
       amountPaid,
-      batchId // ← CRITICAL: Accept batchId from frontend
+      batchId, // ← CRITICAL: Accept batchId from frontend
+      batchType, // 'regular' or 'flexi'
+      flexiSchedule, // JSON string of selected flexi days/time
+      flexiNotes
     } = req.body;
 
     // Validate Signature
@@ -323,6 +368,17 @@ exports.submitEnrollment = async (req, res) => {
     }
     const photoUrl = `/uploads/${req.file.filename}`;
 
+    // ═══ FLEXI-BATCH: parse & validate schedule ═══
+    const isFlexi = batchType === 'flexi';
+    let parsedFlexiSchedule = null;
+    if (isFlexi) {
+      const parsed = parseFlexiSchedule(flexiSchedule);
+      if (parsed.error) {
+        return res.status(400).json({ success: false, error: parsed.error });
+      }
+      parsedFlexiSchedule = parsed.schedule;
+    }
+
     const enrollmentId = await generateEnrollmentId();
     const currentMonthYear = getCurrentMonthYear();
 
@@ -335,26 +391,35 @@ exports.submitEnrollment = async (req, res) => {
 
     // ═══ CRITICAL: Find or create batch ═══
     let batchDoc = null;
-    if (batchId) {
-      batchDoc = await Batch.findById(batchId);
-      if (!batchDoc) {
-        return res.status(400).json({ success: false, error: 'Invalid batch ID provided' });
+    if (!isFlexi) {
+      if (batchId) {
+        batchDoc = await Batch.findById(batchId);
+        if (!batchDoc) {
+          return res.status(400).json({ success: false, error: 'Invalid batch ID provided' });
+        }
+      } else {
+        // Fallback: find by classType + dayId + time
+        batchDoc = await Batch.findOne({ type: classType, dayId, time, status: { $in: ['active', 'filling'] } });
+        if (!batchDoc) {
+          // Auto-create if missing (safety net)
+          batchDoc = new Batch({ type: classType, dayId, time, capacity: 8, status: 'active', instructor: 'Admin' });
+          await batchDoc.save();
+          console.log(`✅ Auto-created batch: ${classType}|${dayId}|${time}`);
+        }
       }
-    } else {
-      // Fallback: find by classType + dayId + time
-      batchDoc = await Batch.findOne({ type: classType, dayId, time, status: { $in: ['active', 'filling'] } });
-      if (!batchDoc) {
-        // Auto-create if missing (safety net)
-        batchDoc = new Batch({ type: classType, dayId, time, capacity: 8, status: 'active', instructor: 'Admin' });
-        await batchDoc.save();
-        console.log(`✅ Auto-created batch: ${classType}|${dayId}|${time}`);
+
+      // Check batch capacity
+      if (batchDoc.enrolledStudents.length >= batchDoc.capacity) {
+        return res.status(400).json({ success: false, error: 'This batch is full. Please select another time slot.' });
       }
     }
 
-    // Check batch capacity
-    if (batchDoc.enrolledStudents.length >= batchDoc.capacity) {
-      return res.status(400).json({ success: false, error: 'This batch is full. Please select another time slot.' });
-    }
+    // ═══ FLEXI-BATCH: derive required student fields from first selected slot ═══
+    const flexiDayId = isFlexi ? parsedFlexiSchedule[0].day : dayId;
+    const flexiTime = isFlexi ? parsedFlexiSchedule[0].time : time;
+    const flexiSlotKey = isFlexi
+      ? `flexi|${parsedFlexiSchedule.map(s => s.day).join('+')}`
+      : slotKey;
 
     const student = new Student({
       enrollmentId,
@@ -368,9 +433,9 @@ exports.submitEnrollment = async (req, res) => {
       contact2,
       email,
       classType,
-      dayId,
-      time,
-      slotKey,
+      dayId: flexiDayId,
+      time: flexiTime,
+      slotKey: flexiSlotKey,
       kitOptIn: kitOptIn === 'true' || kitOptIn === true,
       photoUrl,
       paymentStatus: 'Completed',
@@ -387,25 +452,75 @@ exports.submitEnrollment = async (req, res) => {
       levelHistory: [],
       levelStartedAt: null,
       // ═══ CRITICAL: Link student to batch ═══
-      batchId: batchDoc._id,
-      batchJoinedDate: new Date()
+      batchId: isFlexi ? null : batchDoc._id,
+      batchJoinedDate: new Date(),
+      // ═══ FLEXI-BATCH FLAG ═══
+      isFlexiBatch: isFlexi
     });
 
     await student.save();
 
     // ═══ Add student to batch's enrolledStudents list ═══
-    await Batch.findByIdAndUpdate(batchDoc._id, {
-      $addToSet: { enrolledStudents: student._id }
-    });
-    
+    if (batchDoc) {
+      await Batch.findByIdAndUpdate(batchDoc._id, {
+        $addToSet: { enrolledStudents: student._id }
+      });
+    }
+
+    // ═══ FLEXI-BATCH: create flexi-batch record ═══
+    if (isFlexi) {
+      const flexiBatch = new FlexiBatch({
+        studentId: student._id,
+        schedule: parsedFlexiSchedule,
+        classType,
+        status: 'active',
+        notes: flexiNotes || ''
+      });
+      await flexiBatch.save();
+
+      // CRITICAL: Link flexi-batch to student
+      const dayShortMap = {
+        'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu',
+        'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+      };
+      const daysFull = parsedFlexiSchedule.map(s => s.day);
+      const daysShort = daysFull.map(d => dayShortMap[d] || d);
+      const daysText = daysShort.join('/');       // e.g., "Tue/Wed"
+      const daysFullText = daysFull.join(' & ');  // e.g., "Tuesday & Wednesday"
+      const timeText = parsedFlexiSchedule[0]?.time || '';
+      student.isFlexiBatch = true;
+      student.flexiBatchId = flexiBatch._id;
+      student.batchId = null; // Clear regular batch
+      student.dayId = daysText; // Short display: "Tue/Wed"
+      student.dayIdFull = daysFullText; // Full: "Tuesday & Wednesday"
+      student.time = timeText; // Show actual time
+      student.slotKey = `flexi-${student._id}`;
+      student.batchDisplayName = `${daysText} at ${timeText}`;
+      student.batchDisplayFull = `${daysFullText} at ${timeText}`;
+      await student.save();
+      console.log(`✅ Flexi-batch record created for ${student.childName} (${student.enrollmentId})`);
+    }
+
     await createFirstMonthFeeRecord(student);
     await syncPaymentStatusWithFeeRecords(student);
-    sendWelcomeEmail(student);
+
+    if (isFlexi) {
+      if (student.email) {
+        try {
+          const flexiBatch = await FlexiBatch.findOne({ studentId: student._id });
+          await emailService.sendFlexiBatchConfirmation(student, flexiBatch);
+        } catch (emailError) {
+          console.warn('⚠️ Failed to send flexi-batch confirmation email:', emailError.message);
+        }
+      }
+    } else {
+      sendWelcomeEmail(student);
+    }
 
     res.status(201).json({ 
       success: true, 
       student,
-      batch: { id: batchDoc._id, type: batchDoc.type, dayId: batchDoc.dayId, time: batchDoc.time },
+      batch: batchDoc ? { id: batchDoc._id, type: batchDoc.type, dayId: batchDoc.dayId, time: batchDoc.time } : null,
       message: 'Enrollment successful! Student is ready to start their level journey.'
     });
   } catch (error) {
@@ -427,11 +542,29 @@ exports.manualEnrollment = async (req, res) => {
       kitOptIn, amountPaid, offlinePaymentRef,
       paymentMethod,
       paymentStatus,
-      currentLevel // Allow admin to set initial level
+      currentLevel, // Allow admin to set initial level
+      batchType, // 'regular' or 'flexi'
+      flexiSchedule, // JSON string of selected flexi days/time
+      flexiNotes
     } = req.body;
 
+    // ═══ FLEXI-BATCH: parse & validate schedule ═══
+    const isFlexi = batchType === 'flexi';
+    let parsedFlexiSchedule = null;
+    if (isFlexi) {
+      const parsed = parseFlexiSchedule(flexiSchedule);
+      if (parsed.error) {
+        return res.status(400).json({ success: false, error: parsed.error });
+      }
+      parsedFlexiSchedule = parsed.schedule;
+    }
+
     // Basic validation
-    if (!childName || !parentName || !contact1 || !classType || !dayId || !time || !slotKey) {
+    if (!childName || !parentName || !contact1 || !classType) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    if (!isFlexi && (!dayId || !time || !slotKey)) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
 
@@ -445,19 +578,28 @@ exports.manualEnrollment = async (req, res) => {
 
     // Look up the matching batch
     let batchDoc = null;
-    const batchIdFromBody = req.body.batchId;
-    if (batchIdFromBody) {
-      batchDoc = await Batch.findById(batchIdFromBody);
-    } else {
-      batchDoc = await Batch.findOne({ type: classType, dayId, time, status: { $in: ['active', 'filling'] } });
+    if (!isFlexi) {
+      const batchIdFromBody = req.body.batchId;
+      if (batchIdFromBody) {
+        batchDoc = await Batch.findById(batchIdFromBody);
+      } else {
+        batchDoc = await Batch.findOne({ type: classType, dayId, time, status: { $in: ['active', 'filling'] } });
+      }
+
+      if (!batchDoc) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid batch slot: No active batch found for ${classType} / ${dayId} / ${time}.`
+        });
+      }
     }
 
-    if (!batchDoc) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid batch slot: No active batch found for ${classType} / ${dayId} / ${time}.`
-      });
-    }
+    // ═══ FLEXI-BATCH: derive required student fields from first selected slot ═══
+    const flexiDayId = isFlexi ? parsedFlexiSchedule[0].day : dayId;
+    const flexiTime = isFlexi ? parsedFlexiSchedule[0].time : time;
+    const flexiSlotKey = isFlexi
+      ? `flexi|${parsedFlexiSchedule.map(s => s.day).join('+')}`
+      : slotKey;
 
     const isPaid = paymentStatus === 'completed' || paymentStatus === 'Paid';
     const finalPaymentStatus = isPaid ? 'Completed' : 'Pending';
@@ -511,9 +653,9 @@ exports.manualEnrollment = async (req, res) => {
       contact2: contact2 || '—',
       email: email || '',
       classType,
-      dayId,
-      time,
-      slotKey,
+      dayId: flexiDayId,
+      time: flexiTime,
+      slotKey: flexiSlotKey,
       kitOptIn: kitOptIn === 'true' || kitOptIn === true,
       photoUrl,
       paymentStatus: finalPaymentStatus,
@@ -526,11 +668,12 @@ exports.manualEnrollment = async (req, res) => {
       feeStartDate: new Date(),
       status: 'active',
       enrollmentStatus: enrollmentStatus,
-      batchId: batchDoc._id,
+      batchId: isFlexi ? null : batchDoc._id,
       currentLevel: studentLevel,
       levelHistory: levelHistory,
       levelStartedAt: levelStartedAt,
-      batchJoinedDate: new Date()
+      batchJoinedDate: new Date(),
+      isFlexiBatch: isFlexi
     });
 
     await student.save();
@@ -542,10 +685,55 @@ exports.manualEnrollment = async (req, res) => {
       });
     }
 
+    // ═══ FLEXI-BATCH: create flexi-batch record ═══
+    if (isFlexi) {
+      const flexiBatch = new FlexiBatch({
+        studentId: student._id,
+        schedule: parsedFlexiSchedule,
+        classType,
+        status: 'active',
+        notes: flexiNotes || ''
+      });
+      await flexiBatch.save();
+
+      // CRITICAL: Link flexi-batch to student
+      const dayShortMap = {
+        'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu',
+        'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+      };
+      const daysFull = parsedFlexiSchedule.map(s => s.day);
+      const daysShort = daysFull.map(d => dayShortMap[d] || d);
+      const daysText = daysShort.join('/');       // e.g., "Tue/Wed"
+      const daysFullText = daysFull.join(' & ');  // e.g., "Tuesday & Wednesday"
+      const timeText = parsedFlexiSchedule[0]?.time || '';
+      student.isFlexiBatch = true;
+      student.flexiBatchId = flexiBatch._id;
+      student.batchId = null; // Clear regular batch
+      student.dayId = daysText; // Short display: "Tue/Wed"
+      student.dayIdFull = daysFullText; // Full: "Tuesday & Wednesday"
+      student.time = timeText; // Show actual time
+      student.slotKey = `flexi-${student._id}`;
+      student.batchDisplayName = `${daysText} at ${timeText}`;
+      student.batchDisplayFull = `${daysFullText} at ${timeText}`;
+      await student.save();
+      console.log(`✅ Flexi-batch record created for ${student.childName} (${student.enrollmentId})`);
+    }
+
     await createFirstMonthFeeRecord(student);
     await syncPaymentStatusWithFeeRecords(student);
 
-    if (email) sendWelcomeEmail(student);
+    if (email) {
+      if (isFlexi) {
+        try {
+          const flexiBatch = await FlexiBatch.findOne({ studentId: student._id });
+          await emailService.sendFlexiBatchConfirmation(student, flexiBatch);
+        } catch (emailError) {
+          console.warn('⚠️ Failed to send flexi-batch confirmation email:', emailError.message);
+        }
+      } else {
+        sendWelcomeEmail(student);
+      }
+    }
 
     const statusMsg = studentLevel > 0
       ? `Student enrolled at Level ${studentLevel}!`

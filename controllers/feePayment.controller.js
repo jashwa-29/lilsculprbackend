@@ -416,6 +416,138 @@ exports.getPaymentSummary = async (req, res) => {
 };
 
 /**
+ * Get detailed revenue breakdown for admin dashboard
+ * GET /api/fee-payment/revenue/detailed
+ */
+exports.getDetailedRevenue = async (req, res) => {
+  try {
+    const now = new Date();
+    const currentMonthIndex = now.getMonth();
+
+    const { month: reqMonth, year: reqYear } = req.query;
+    const selectedMonth = reqMonth || now.toLocaleString('en-IN', { month: 'long' });
+    const selectedYear = reqYear ? parseInt(reqYear) : now.getFullYear();
+
+    // ─── SELECTED MONTH SUMMARY ────────────────────────────
+    const selectedMonthPaid = await FeeRecord.countDocuments({
+      month: selectedMonth,
+      year: selectedYear,
+      status: 'Paid'
+    });
+    const selectedMonthPending = await FeeRecord.countDocuments({
+      month: selectedMonth,
+      year: selectedYear,
+      status: 'Pending'
+    });
+    const selectedMonthTotal = selectedMonthPaid + selectedMonthPending;
+
+    const selectedMonthRevenue = await FeeRecord.aggregate([
+      { $match: { month: selectedMonth, year: selectedYear, status: 'Paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+
+    // Amount still pending for the selected month
+    const selectedMonthPendingAmount = await FeeRecord.aggregate([
+      { $match: { month: selectedMonth, year: selectedYear, status: 'Pending' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+
+    // ─── ALL TIME REVENUE ─────────────────────────────────
+    const totalRevenue = await FeeRecord.aggregate([
+      { $match: { status: 'Paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+
+    // ─── LAST 12 MONTHS TREND (chronological order) ───────
+    const monthlyTrends = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), currentMonthIndex - i, 1);
+      const monthName = d.toLocaleString('en-IN', { month: 'long' });
+      const year = d.getFullYear();
+
+      const paid = await FeeRecord.countDocuments({
+        month: monthName, year, status: 'Paid'
+      });
+      const pending = await FeeRecord.countDocuments({
+        month: monthName, year, status: 'Pending'
+      });
+      const revenue = await FeeRecord.aggregate([
+        { $match: { month: monthName, year, status: 'Paid' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]);
+
+      const total = paid + pending;
+      monthlyTrends.push({
+        month: monthName,
+        shortMonth: monthName.substring(0, 3),
+        year,
+        paid,
+        pending,
+        total,
+        revenue: revenue[0]?.total || 0,
+        collectionRate: total > 0 ? Math.round((paid / total) * 100) : 0
+      });
+    }
+
+    // ─── STUDENT COUNTS ────────────────────────────────────
+    const totalStudents = await Student.countDocuments({ status: 'active' });
+    const activeStudents = await Student.countDocuments({
+      status: 'active',
+      enrollmentStatus: { $in: ['active', 'pending'] }
+    });
+
+    // ─── AVERAGE FEE PER PAID RECORD ──────────────────────
+    const paidAgg = await FeeRecord.aggregate([
+      { $match: { status: 'Paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+    ]);
+    const avgFee = paidAgg[0]?.count
+      ? Math.round(paidAgg[0].total / paidAgg[0].count)
+      : 0;
+
+    const selectedMonthAmount = selectedMonthRevenue[0]?.total || 0;
+    const selectedMonthPendingAmt = selectedMonthPendingAmount[0]?.total || 0;
+
+    res.json({
+      success: true,
+      data: {
+        selectedMonth: {
+          month: selectedMonth,
+          year: selectedYear,
+          totalStudents: selectedMonthTotal,
+          paid: selectedMonthPaid,
+          pending: selectedMonthPending,
+          revenue: selectedMonthAmount,
+          pendingAmount: selectedMonthPendingAmt,
+          collectionRate: selectedMonthTotal > 0
+            ? Math.round((selectedMonthPaid / selectedMonthTotal) * 100)
+            : 0
+        },
+        allTime: {
+          totalRevenue: totalRevenue[0]?.total || 0,
+          totalPaidRecords: paidAgg[0]?.count || 0,
+          totalPendingRecords: await FeeRecord.countDocuments({ status: 'Pending' }),
+          avgFeePerRecord: avgFee
+        },
+        students: {
+          total: totalStudents,
+          active: activeStudents
+        },
+        monthlyTrends,
+        timestamp: now.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Get Detailed Revenue Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch revenue details'
+    });
+  }
+};
+
+/**
  * Get all fee records
  * GET /api/fee-payment/all
  */

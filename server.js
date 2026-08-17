@@ -27,6 +27,7 @@ const galleryRoutes = require('./routes/gallery.routes');
 const compensationRequestRoutes = require('./routes/compensationRequest.routes');
 const categoryRoutes = require('./routes/category.routes');
 const workshopRoutes = require('./routes/workshop.routes');
+const flexiBatchRoutes = require('./routes/flexiBatch.routes');
 
 const app = express();
              
@@ -57,10 +58,15 @@ const corsOptions = {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
-    } else {
-      console.warn('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
+      return;
     }
+    // Allow any localhost / 127.0.0.1 origin with any port (Live Server, local dev)
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      callback(null, true);
+      return;
+    }
+    console.warn('CORS blocked origin:', origin);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   optionsSuccessStatus: 200
@@ -208,6 +214,7 @@ app.use("/api/gallery", galleryRoutes);
 app.use("/api/compensation-requests", compensationRequestRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/workshops", workshopRoutes);
+app.use("/api/flexi-batches", flexiBatchRoutes);
 app.use("/api", migrationRoutes);
 
 // --- Static File Handling ---
@@ -242,6 +249,23 @@ app.use((err, req, res, next) => {
       message: 'Origin not allowed'
     });
   }
+
+  // Handle multer file size limit (uploads over 2MB)
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      success: false,
+      error: 'Photo is too large. Maximum allowed size is 2 MB.',
+      message: 'Photo is too large. Maximum allowed size is 2 MB.'
+    });
+  }
+
+  // Handle multer file type rejection
+  if (err.message === 'Only image files are allowed!') {
+    return res.status(400).json({
+      success: false,
+      error: 'Only image files are allowed! Please upload a JPG, PNG, or similar photo.'
+    });
+  }
   
   // Default error response
   res.status(err.status || 500).json({ 
@@ -267,12 +291,12 @@ process.on('SIGTERM', () => {
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`
-  🚀 Server running on port ${PORT}
+  🚀 Server running on port ${PORT}    
   🌍 Environment: ${process.env.NODE_ENV || 'development'}
   📅 Started at: ${new Date().toLocaleString('en-IN')}
-  🔗 Local: http://localhost:${PORT}
+  🔗 Local: http://localhost:${PORT}  
   🔗 Network: http://0.0.0.0:${PORT}
-  `);
+  `);  
 });
 
 // Handle unhandled promise rejections

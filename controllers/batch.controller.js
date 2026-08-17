@@ -1,18 +1,94 @@
 const Batch = require('../models/Batch.model');
 const Student = require('../models/student.model');
+const FlexiBatch = require('../models/FlexiBatch.model');
 const CompensationToken = require('../models/CompensationToken.model');
 
 /**
  * GET /api/batches
- * Get all active and filling batches
+ * Get all active and filling batches + flexi-batches
  */
 exports.getAllBatches = async (req, res) => {
   try {
+    // Get regular batches
     const batches = await Batch.find().populate('enrolledStudents', 'childName currentLevel enrollmentStatus');
-    res.json({ success: true, batches });
+
+    // Get active flexi-batches with student info
+    const flexiBatches = await FlexiBatch.find({ status: 'active' })
+      .populate('studentId', 'childName parentName enrollmentId');
+
+    const dayShortMap = {
+      'Monday': 'Mon',
+      'Tuesday': 'Tue',
+      'Wednesday': 'Wed',
+      'Thursday': 'Thu',
+      'Friday': 'Fri',
+      'Saturday': 'Sat',
+      'Sunday': 'Sun'
+    };
+
+    // Format flexi-batches for display (safe property access)
+    const formattedFlexiBatches = flexiBatches.map(fb => {
+      const schedule = fb.schedule || [];
+      const daysShort = schedule.map(s => dayShortMap[s.day] || s.day).join('/');
+      const daysFull = schedule.map(s => s.day).join(' & ');
+      const timeText = schedule[0]?.time || '';
+
+      return {
+        _id: fb._id,
+        type: 'flexi',
+        dayId: daysShort,           // e.g., "Tue/Wed"
+        dayIdFull: daysFull,        // e.g., "Tuesday & Wednesday"
+        time: timeText,
+        capacity: 999,              // No capacity limit
+        status: fb.status || 'active',
+        isFlexi: true,
+        schedule,
+        enrolledStudents: fb.studentId ? [fb.studentId] : [],
+        enrolledCount: fb.studentId ? 1 : 0,
+        displayName: `${daysShort} · ${timeText}`,
+        displayNameFull: `${daysFull} · ${timeText}`,
+        classType: fb.classType || 'offline'
+      };
+    });
+
+    // Format regular batches uniformly
+    const formattedRegularBatches = batches.map(batch => ({
+      _id: batch._id,
+      type: batch.type,
+      dayId: batch.dayId,
+      time: batch.time,
+      capacity: batch.capacity,
+      status: batch.status,
+      isFlexi: false,
+      enrolledStudents: batch.enrolledStudents || [],
+      enrolledCount: batch.enrolledStudents ? batch.enrolledStudents.length : 0,
+      displayName: `${batch.dayId} · ${batch.time}`,
+      instructor: batch.instructor,
+      notes: batch.notes
+    }));
+
+    // Combine and sort: regular batches first, then flexi-batches
+    const allBatches = [...formattedRegularBatches, ...formattedFlexiBatches];
+    allBatches.sort((a, b) => {
+      if (a.isFlexi && !b.isFlexi) return 1;
+      if (!a.isFlexi && b.isFlexi) return -1;
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+
+    res.json({
+      success: true,
+      batches: allBatches,
+      flexiBatches: formattedFlexiBatches,
+      regularBatches: formattedRegularBatches,
+      counts: {
+        total: allBatches.length,
+        regular: formattedRegularBatches.length,
+        flexi: formattedFlexiBatches.length
+      }
+    });
   } catch (error) {
     console.error('Get All Batches Error:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch batches' });
+    res.status(500).json({ success: false, error: 'Failed to fetch batches: ' + error.message });
   }
 };
 
@@ -190,7 +266,8 @@ exports.getStudentBatchInfo = async (req, res) => {
     const { studentId } = req.params;
     const student = await Student.findById(studentId)
       .populate('batchId')
-      .select('currentLevel enrollmentStatus batchId levelHistory levelStartedAt');
+      .populate('flexiBatchId')
+      .select('currentLevel enrollmentStatus batchId flexiBatchId levelHistory levelStartedAt isFlexiBatch');
     
     if (!student) {
       return res.status(404).json({ 
@@ -209,16 +286,42 @@ exports.getStudentBatchInfo = async (req, res) => {
     // Get level details
     const levelDetails = student.getCurrentLevelDetails();
 
+    // Format batch info (includes flexi)
+    let batchInfo = null;
+
+    if (student.isFlexiBatch && student.flexiBatchId) {
+      const flexi = student.flexiBatchId;
+      batchInfo = {
+        type: 'flexi',
+        displayName: flexi.displayName,
+        displayNameFull: flexi.displayNameFull,
+        dayShort: flexi.dayShort,
+        dayFull: flexi.dayFull,
+        schedule: flexi.schedule,
+        classType: flexi.classType,
+        status: flexi.status,
+        notes: flexi.notes
+      };
+    } else if (student.batchId) {
+      batchInfo = {
+        type: 'regular',
+        batch: student.batchId
+      };
+    }
+
     res.json({
       success: true,
       student: {
         currentLevel: student.currentLevel,
         enrollmentStatus: student.enrollmentStatus,
         batch: student.batchId,
+        flexiBatch: student.flexiBatchId,
+        isFlexiBatch: student.isFlexiBatch,
         levelHistory: student.levelHistory,
         levelStartedAt: student.levelStartedAt,
         availableTokens,
-        levelDetails
+        levelDetails,
+        batchInfo
       }
     });
   } catch (error) {

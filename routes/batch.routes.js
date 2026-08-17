@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const batchController = require('../controllers/batch.controller');
+const flexiBatchController = require('../controllers/flexiBatch.controller');
 
-// Get all batches
+// Get all batches (including flexi)
 router.get('/', batchController.getAllBatches);
+
+// Get flexi-batches only
+router.get('/flexi', flexiBatchController.getAllFlexiBatches);
 
 // Create a new batch
 router.post('/', batchController.createBatch);
