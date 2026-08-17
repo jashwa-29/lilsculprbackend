@@ -9,7 +9,7 @@ const AttendanceRecord = require('../models/AttendanceRecord.model');
 const CompensationRecord = require('../models/CompensationRecord.model');
 const FlexiBatch = require('../models/FlexiBatch.model');
 const emailService = require('../services/email.service');
-const { syncStudentPaymentStatus } = require('../services/syncFeeStatus.service');
+const { syncStudentPaymentStatus, ensureMonthlyFeeRecords } = require('../services/syncFeeStatus.service');
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -984,6 +984,13 @@ exports.getFeesOverview = async (req, res) => {
     const currentMonth = now.toLocaleString('en-IN', { month: 'long' });
     const currentYear = now.getFullYear();
 
+    // Auto-bill any active student missing a record for the current month
+    try {
+      await ensureMonthlyFeeRecords({ month: currentMonth, year: currentYear });
+    } catch (billErr) {
+      console.warn('⚠️ Auto-billing skipped for overview:', billErr.message);
+    }
+
     const [paidFees, pendingFees, monthPaid, monthPending, monthRevenue, monthPendingAmt] = await Promise.all([
       // All-time paid
       FeeRecord.aggregate([
@@ -1041,6 +1048,12 @@ exports.getFeesOverview = async (req, res) => {
 exports.getAllFeesForMonth = async (req, res) => {
   try {
     const { month, year } = req.params;
+    // Auto-bill any active student missing a record for this month (self-healing)
+    try {
+      await ensureMonthlyFeeRecords({ month, year: Number(year) });
+    } catch (billErr) {
+      console.warn('⚠️ Auto-billing skipped for month:', billErr.message);
+    }
     const fees = await FeeRecord.find({ month, year: Number(year) });
     res.json({ success: true, fees });
   } catch (error) {

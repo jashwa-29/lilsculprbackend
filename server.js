@@ -104,6 +104,18 @@ const connectDB = async () => {
     const seedWorkshops = require('./seed/seedWorkshops');
     await seedWorkshops();
 
+    // ═══ AUTO-BILLING: Ensure every active student has a fee record for the current month ═══
+    try {
+      const { ensureMonthlyFeeRecords } = require('./services/syncFeeStatus.service');
+      const now = new Date();
+      const month = now.toLocaleString('en-IN', { month: 'long' });
+      const year = now.getFullYear();
+      const result = await ensureMonthlyFeeRecords({ month, year });
+      console.log(`📅 Auto-billing on startup: ${result.created} record(s) created for ${month} ${year}`);
+    } catch (billErr) {
+      console.warn('⚠️ Startup auto-billing skipped:', billErr.message);
+    }
+
     // Listen to connection events
     mongoose.connection.on('error', (err) => {
       console.error('❌ MongoDB connection error:', err);

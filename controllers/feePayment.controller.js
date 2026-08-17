@@ -3,7 +3,7 @@ const FeeRecord = require('../models/FeeRecord.model');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const emailService = require('../services/email.service');
-const { syncStudentPaymentStatus } = require('../services/syncFeeStatus.service');
+const { syncStudentPaymentStatus, ensureMonthlyFeeRecords } = require('../services/syncFeeStatus.service');
 
 // Initialize Razorpay
 let razorpay;
@@ -427,6 +427,13 @@ exports.getDetailedRevenue = async (req, res) => {
     const { month: reqMonth, year: reqYear } = req.query;
     const selectedMonth = reqMonth || now.toLocaleString('en-IN', { month: 'long' });
     const selectedYear = reqYear ? parseInt(reqYear) : now.getFullYear();
+
+    // Auto-bill any active student missing a record for the selected month
+    try {
+      await ensureMonthlyFeeRecords({ month: selectedMonth, year: selectedYear });
+    } catch (billErr) {
+      console.warn('⚠️ Auto-billing skipped for revenue:', billErr.message);
+    }
 
     // ─── SELECTED MONTH SUMMARY ────────────────────────────
     const selectedMonthPaid = await FeeRecord.countDocuments({
