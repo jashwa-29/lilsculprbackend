@@ -980,20 +980,53 @@ exports.upsertStudentFee = async (req, res) => {
  */
 exports.getFeesOverview = async (req, res) => {
   try {
-    const [paidFees, pendingFees] = await Promise.all([
+    const now = new Date();
+    const currentMonth = now.toLocaleString('en-IN', { month: 'long' });
+    const currentYear = now.getFullYear();
+
+    const [paidFees, pendingFees, monthPaid, monthPending, monthRevenue, monthPendingAmt] = await Promise.all([
+      // All-time paid
       FeeRecord.aggregate([
         { $match: { status: 'Paid' } },
         { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
       ]),
+      // All-time pending
       FeeRecord.aggregate([
         { $match: { status: 'Pending' } },
         { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+      ]),
+      // Current month paid
+      FeeRecord.countDocuments({ month: currentMonth, year: currentYear, status: 'Paid' }),
+      // Current month pending
+      FeeRecord.countDocuments({ month: currentMonth, year: currentYear, status: 'Pending' }),
+      // Current month revenue (₹ collected)
+      FeeRecord.aggregate([
+        { $match: { month: currentMonth, year: currentYear, status: 'Paid' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]),
+      // Current month pending amount (₹ yet to collect)
+      FeeRecord.aggregate([
+        { $match: { month: currentMonth, year: currentYear, status: 'Pending' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
       ])
     ]);
+
+    const monthTotal = monthPaid + monthPending;
+
     res.json({
       success: true,
       paid: { total: paidFees[0]?.total || 0, count: paidFees[0]?.count || 0 },
-      pending: { total: pendingFees[0]?.total || 0, count: pendingFees[0]?.count || 0 }
+      pending: { total: pendingFees[0]?.total || 0, count: pendingFees[0]?.count || 0 },
+      currentMonth: {
+        month: currentMonth,
+        year: currentYear,
+        totalStudents: monthTotal,
+        paid: monthPaid,
+        pending: monthPending,
+        revenue: monthRevenue[0]?.total || 0,
+        pendingAmount: monthPendingAmt[0]?.total || 0,
+        collectionRate: monthTotal > 0 ? Math.round((monthPaid / monthTotal) * 100) : 0
+      }
     });
   } catch (error) {
     console.error('Get Fees Overview Error:', error);
