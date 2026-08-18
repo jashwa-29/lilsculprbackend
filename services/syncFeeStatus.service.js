@@ -91,8 +91,10 @@ async function ensureMonthlyFeeRecords({ month, year, studentId } = {}) {
       status: isPaid ? 'Paid' : 'Pending',
       paymentMethod: isPaid ? (student.paymentMethod || 'Razorpay') : null,
       paidAt: isPaid ? new Date() : null,
+      razorpayOrderId: isPaid ? (student.razorpayOrderId || null) : null,
+      razorpayPaymentId: isPaid ? (student.razorpayPaymentId || null) : null,
       notes: isPaid
-        ? 'First month fee paid via enrollment (auto-billed)'
+        ? `First month fee paid via enrollment (auto-billed)${student.razorpayPaymentId ? ' (' + student.razorpayPaymentId + ')' : ''}`
         : `Monthly fee auto-billed for ${targetMonth} ${targetYear}`
     });
     created++;

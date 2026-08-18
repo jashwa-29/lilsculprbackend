@@ -189,8 +189,10 @@ const createFirstMonthFeeRecord = async (student) => {
       status: isPaid ? 'Paid' : 'Pending',
       paymentMethod: isPaid ? (student.paymentMethod || 'Razorpay') : null,
       paidAt: isPaid ? new Date() : null,
+      razorpayOrderId: student.razorpayOrderId || null,
+      razorpayPaymentId: student.razorpayPaymentId || null,
       notes: isPaid 
-        ? 'First month fee paid via enrollment' 
+        ? `First month fee paid via enrollment${student.razorpayPaymentId ? ' (' + student.razorpayPaymentId + ')' : ''}` 
         : 'First month fee pending - will be collected later'
     });
     await feeRecord.save();
@@ -201,7 +203,9 @@ const createFirstMonthFeeRecord = async (student) => {
       existing.status = 'Paid';
       existing.paymentMethod = student.paymentMethod || 'Razorpay';
       existing.paidAt = new Date();
-      existing.notes = 'First month fee paid via enrollment (updated)';
+      existing.razorpayOrderId = existing.razorpayOrderId || student.razorpayOrderId || null;
+      existing.razorpayPaymentId = existing.razorpayPaymentId || student.razorpayPaymentId || null;
+      existing.notes = `First month fee paid via enrollment (updated)${student.razorpayPaymentId ? ' (' + student.razorpayPaymentId + ')' : ''}`;
       await existing.save();
       console.log(`✅ Updated fee record for ${student.childName} from Pending to Paid`);
     }
@@ -239,6 +243,8 @@ const syncPaymentStatusWithFeeRecords = async (student) => {
         status: 'Paid',
         paymentMethod: student.paymentMethod || 'Razorpay',
         paidAt: new Date(),
+        razorpayOrderId: student.razorpayOrderId || null,
+        razorpayPaymentId: student.razorpayPaymentId || null,
         notes: `First month fee paid via enrollment (${student.enrollmentId || 'Manual'})`
       });
       await feeRecord.save();
@@ -247,6 +253,8 @@ const syncPaymentStatusWithFeeRecords = async (student) => {
       existing.status = 'Paid';
       existing.paymentMethod = student.paymentMethod || 'Razorpay';
       existing.paidAt = new Date();
+      existing.razorpayOrderId = existing.razorpayOrderId || student.razorpayOrderId || null;
+      existing.razorpayPaymentId = existing.razorpayPaymentId || student.razorpayPaymentId || null;
       existing.notes = `Marked as Paid based on admission payment (${student.enrollmentId || 'Manual'})`;
       await existing.save();
       console.log(`✅ Updated fee record for ${student.childName}: ${month} ${year} (Pending → Paid)`);
