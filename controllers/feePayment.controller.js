@@ -257,6 +257,8 @@ exports.verifyFeePayment = async (req, res) => {
       status: 'Paid',
       paymentMethod: paymentMethod || 'Razorpay',
       paidAt: new Date(),
+      razorpayOrderId: razorpay_order_id || null,
+      razorpayPaymentId: razorpay_payment_id || null,
       notes: `Paid via Razorpay - ${razorpay_payment_id}`
     };
 

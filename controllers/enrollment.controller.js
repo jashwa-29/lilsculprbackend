@@ -909,8 +909,38 @@ exports.updateBatches = async (req, res) => {
  */
 exports.getStudentFees = async (req, res) => {
   try {
+    const student = await Student.findById(req.params.id);
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+
     const fees = await FeeRecord.find({ studentId: req.params.id }).sort({ year: 1, month: 1 });
-    res.json({ success: true, fees });
+
+    // Enrich old records that predate the razorpayOrderId/razorpayPaymentId fields:
+    //  1. First (enrollment) month → copy the student's payment details
+    //  2. Other records → parse payment reference out of the notes field
+    const feeStartParts = (student.feeStartMonth || '').trim().split(/\s+/);
+    const enrollMonth = feeStartParts[0] || null;
+    const enrollYear = feeStartParts[1] ? Number(feeStartParts[1]) : null;
+
+    const enriched = fees.map(f => {
+      const rec = f.toObject();
+      if (!rec.razorpayOrderId && enrollMonth && rec.month === enrollMonth && Number(rec.year) === enrollYear) {
+        rec.razorpayOrderId = student.razorpayOrderId || null;
+      }
+      if (!rec.razorpayPaymentId && enrollMonth && rec.month === enrollMonth && Number(rec.year) === enrollYear) {
+        rec.razorpayPaymentId = student.razorpayPaymentId || null;
+      }
+      if (!rec.razorpayPaymentId && rec.notes) {
+        const rzpMatch = String(rec.notes).match(/Razorpay\s*-\s*([A-Za-z0-9_\-]+)/i);
+        if (rzpMatch) rec.razorpayPaymentId = rzpMatch[1];
+        const refMatch = String(rec.notes).match(/\b(MANUAL|OFFLINE|PENDING)-[A-Za-z0-9_\-]+/);
+        if (!rec.razorpayPaymentId && refMatch) rec.razorpayPaymentId = refMatch[0];
+      }
+      return rec;
+    });
+
+    res.json({ success: true, fees: enriched });
   } catch (error) {
     console.error('Get Student Fees Error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch fee records' });
@@ -923,7 +953,7 @@ exports.getStudentFees = async (req, res) => {
  */
 exports.upsertStudentFee = async (req, res) => {
   try {
-    const { month, year, amount, status, paymentMethod, notes } = req.body;
+    const { month, year, amount, status, paymentMethod, notes, razorpayOrderId, razorpayPaymentId } = req.body;
     if (!month || !year) {
       return res.status(400).json({ success: false, error: 'Month and year are required' });
     }
@@ -945,6 +975,8 @@ exports.upsertStudentFee = async (req, res) => {
       amount: Number(amount) || 0,
       status: status || 'Pending',
       paymentMethod: paymentMethod || null,
+      razorpayOrderId: razorpayOrderId || null,
+      razorpayPaymentId: razorpayPaymentId || null,
       notes: notes || '',
       paidAt: status === 'Paid' ? new Date() : null
     };

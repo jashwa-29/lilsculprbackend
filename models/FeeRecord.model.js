@@ -49,6 +49,14 @@ const feeRecordSchema = new mongoose.Schema({
     enum: ['Cash', 'UPI', 'Bank Transfer', 'Other', 'Razorpay'],
     default: null
   },
+  razorpayOrderId: {
+    type: String,
+    default: null
+  },
+  razorpayPaymentId: {
+    type: String,
+    default: null
+  },
   notes: {
     type: String,
     trim: true,
