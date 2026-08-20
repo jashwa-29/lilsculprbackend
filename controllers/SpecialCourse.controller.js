@@ -2,6 +2,7 @@ const SpecialCourse = require('../models/SpecialCourse.model');
 const SpecialCoursePayment = require('../models/SpecialCoursePayment.model');
 const emailService = require('../services/email.service');
 const validationService = require('../services/validation.service');
+const workshopRuntimeConfig = require('../services/workshopRuntimeConfig.service');
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
 
@@ -45,8 +46,11 @@ const WORKSHOP_CONFIG = {
 };
 
 const getWorkshopConfig = (carnivalName) => {
-    const config = WORKSHOP_CONFIG[carnivalName];
-    if (config) return config;
+    const staticConfig = WORKSHOP_CONFIG[carnivalName];
+    if (staticConfig) return staticConfig;
+    // Dynamically created workshops (admin panel) are registered at runtime
+    const dynamicConfig = workshopRuntimeConfig.get(carnivalName);
+    if (dynamicConfig) return dynamicConfig;
     // Fallback for unknown workshops
     return { fee: 399, capacity: DEFAULT_BATCH_CAPACITY, prefix: "LS-WS26", dates: [] };
 };
