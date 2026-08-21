@@ -27,6 +27,11 @@ const compensationRecordSchema = new mongoose.Schema({
     enum: ['Booked', 'Attended', 'Missed'],
     default: 'Booked'
   },
+  // True when created manually by admin (no token redemption)
+  manual: {
+    type: Boolean,
+    default: false
+  },
   bookedAt: {
     type: Date,
     default: Date.now

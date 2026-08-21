@@ -1247,6 +1247,91 @@ exports.updateCompensationStatus = async (req, res) => {
 };
 
 /**
+ * POST /api/enrollment/compensations/manual
+ * Admin: manually book a compensation class on any date (no token required).
+ * Batch details are derived from the student's regular or flexi batch.
+ */
+exports.createManualCompensation = async (req, res) => {
+  try {
+    const { studentId, date, status } = req.body;
+
+    if (!studentId || !date) {
+      return res.status(400).json({
+        success: false,
+        error: 'studentId and date are required'
+      });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({
+        success: false,
+        error: 'date must be in YYYY-MM-DD format'
+      });
+    }
+
+    const student = await Student.findById(studentId)
+      .populate('batchId')
+      .populate('flexiBatchId');
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: 'Student not found' });
+    }
+
+    // Derive batch details from flexi or regular batch
+    let batchType;
+    let dayId;
+    let time;
+
+    if (student.isFlexiBatch && student.flexiBatchId) {
+      const fb = student.flexiBatchId;
+      batchType = fb.classType || 'offline';
+      dayId = (fb.schedule || []).map(s => s.day).join('/') || 'flexi';
+      time = (fb.schedule && fb.schedule[0]?.time) || '';
+    } else if (student.batchId) {
+      batchType = student.batchId.type;
+      dayId = student.batchId.dayId;
+      time = student.batchId.time;
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Student has no batch assigned. Assign a batch first.'
+      });
+    }
+
+    // Prevent duplicate compensation records for the same student + date
+    const existing = await CompensationRecord.findOne({ studentId, date });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: `A compensation already exists for this student on ${date}`
+      });
+    }
+
+    const record = await CompensationRecord.create({
+      studentId,
+      date,
+      batchType,
+      dayId,
+      time,
+      status: ['Booked', 'Attended', 'Missed'].includes(status) ? status : 'Booked',
+      manual: true
+    });
+
+    res.json({
+      success: true,
+      data: record,
+      message: `Compensation booked manually for ${date}`
+    });
+  } catch (error) {
+    console.error('Create Manual Compensation Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create manual compensation'
+    });
+  }
+};
+
+/**
  * GET /api/enrollment/compensations/admin
  * Get all compensation records with full details (admin view)
  */

@@ -44,6 +44,7 @@ router.post('/attendance', enrollmentController.updateAttendance);
 router.get('/compensations', enrollmentController.getCompensations);
 router.get('/compensations/admin', enrollmentController.getAllCompensationsAdmin);
 router.get('/compensations/stats', enrollmentController.getCompensationStats);
+router.post('/compensations/manual', enrollmentController.createManualCompensation);
 router.put('/compensations/:id', enrollmentController.updateCompensationStatus);
 
 // Config: Get batches (with dynamic slot counts)
