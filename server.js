@@ -27,6 +27,7 @@ const galleryRoutes = require('./routes/gallery.routes');
 const compensationRequestRoutes = require('./routes/compensationRequest.routes');
 const categoryRoutes = require('./routes/category.routes');
 const workshopRoutes = require('./routes/workshop.routes');
+const blogRoutes = require('./routes/blog.routes');
 const flexiBatchRoutes = require('./routes/flexiBatch.routes');
 
 const app = express();
@@ -226,6 +227,7 @@ app.use("/api/gallery", galleryRoutes);
 app.use("/api/compensation-requests", compensationRequestRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/workshops", workshopRoutes);
+app.use("/api/blogs", blogRoutes);
 app.use("/api/flexi-batches", flexiBatchRoutes);
 app.use("/api", migrationRoutes);
 
