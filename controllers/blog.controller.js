@@ -250,11 +250,15 @@ exports.update = async (req, res) => {
 
     const body = req.body || {};
     const wasPublished = existing.status === 'published';
+    const previousSlug = existing.slug;
+    const previousPageUrl = existing.pageUrl;
 
-    // Slug: only rebuild when title/slug changed
-    if ((body.slug && slugify(body.slug) !== existing.slug) ||
-        (body.title && !body.slug && slugify(body.title) !== existing.slug)) {
-      existing.slug = await buildUniqueSlug(body.slug || body.title, existing._id);
+    // Slug: only change when an explicit slug is sent (keeps published URLs stable)
+    if (body.slug !== undefined) {
+      const next = slugify(body.slug);
+      if (next && next !== existing.slug) {
+        existing.slug = await buildUniqueSlug(next, existing._id);
+      }
     }
 
     if (body.title !== undefined) existing.title = body.title;
@@ -268,7 +272,12 @@ exports.update = async (req, res) => {
     if (body.metaTitle !== undefined) existing.metaTitle = body.metaTitle;
     if (body.metaDescription !== undefined) existing.metaDescription = body.metaDescription;
     if (body.displayOrder !== undefined) existing.displayOrder = Number(body.displayOrder) || 0;
-    if (body.design !== undefined) existing.design = sanitizeDesign(body.design);
+    if (body.design !== undefined) {
+      const currentDesign = existing.design && typeof existing.design.toObject === 'function'
+        ? existing.design.toObject()
+        : (existing.design || {});
+      existing.design = sanitizeDesign({ ...currentDesign, ...body.design });
+    }
 
     // Status transitions manage the publish date
     const nowPublished = body.status === 'published';
@@ -282,6 +291,16 @@ exports.update = async (req, res) => {
     // Publish / re-publish / un-publish the static page accordingly
     let pageGeneration = null;
     if (existing.status === 'published') {
+      // Slug/pageUrl changed on a live page: remove the stale file first
+      if ((previousSlug && previousSlug !== existing.slug) ||
+          (previousPageUrl && previousPageUrl !== `${existing.slug}.html`)) {
+        try {
+          await deleteBlogFiles({ pageUrl: previousPageUrl || `${previousSlug}.html`, slug: previousSlug });
+        } catch (e) {
+          console.warn('Old blog page cleanup skipped:', e.message);
+        }
+        existing.pageUrl = '';
+      }
       pageGeneration = await generateAndUpload(existing);
       if (pageGeneration.pageFileName) {
         existing.pageUrl = pageGeneration.pageFileName;
