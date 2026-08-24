@@ -66,7 +66,7 @@ const normalizeBlog = (blog) => {
     imageHeight: Number(d.imageHeight ?? 240),
     showImage: d.showImage !== false,
     showDate: d.showDate !== false,
-    showAuthor: !!d.showAuthor,
+    showAuthor: d.showAuthor !== false,
     showCategory: d.showCategory !== false,
     showBadge: !!d.showBadge,
     badgeText: d.badgeText || 'New',
@@ -100,7 +100,7 @@ const renderHeading = (block, design) => {
   const tag = ['h2', 'h3', 'h4'].includes(block.level) ? block.level : 'h2';
   const styles = [
     `text-align:${block.align || 'left'}`,
-    `color:${block.color || design.themeColor}`,
+    block.color ? `color:${block.color}` : '',
     block.fontSize ? `font-size:${block.fontSize}px` : ''
   ].filter(Boolean).join(';');
   return `<${tag} class="blog-block-heading"${styles ? ` style="${styles}"` : ''}>${escapeHtml(block.text)}</${tag}>`;
@@ -108,24 +108,28 @@ const renderHeading = (block, design) => {
 
 const renderList = (block, design) => {
   const tag = block.ordered ? 'ol' : 'ul';
-  const markerClass = block.listStyle === 'check'
-    ? 'blog-list-check'
-    : block.listStyle === 'arrow'
-      ? 'blog-list-arrow'
-      : '';
   const items = (block.items || []).map((i) => `<li>${escapeHtml(i)}</li>`).join('');
-  const color = block.color || design.themeColor;
-  return `<div class="blog-inner-list ${markerClass}" style="--list-accent:${color}">
+
+  // Plain / dot lists render exactly like the reference page (bare <ul>/<ol>);
+  // check & arrow render as an accented box for extra emphasis.
+  if (block.listStyle === 'check' || block.listStyle === 'arrow') {
+    const markerClass = block.listStyle === 'check' ? 'blog-list-check' : 'blog-list-arrow';
+    const color = block.color || design.themeColor;
+    return `<div class="blog-inner-list ${markerClass}" style="--list-accent:${color}">
                   <${tag}>
                     ${items}
                   </${tag}>
                 </div>`;
+  }
+  return `<${tag}>
+                  ${items}
+                </${tag}>`;
 };
 
 const renderQuote = (block, design) => `
-                <blockquote class="blog-quote" style="border-left-color:${design.themeColor};background:${design.themeColor}12">
+                <blockquote class="block-quote">
                   <p>${escapeHtml(block.text)}</p>
-                  ${block.author ? `<cite>&mdash; ${escapeHtml(block.author)}</cite>` : ''}
+                  ${block.author ? `<cite>${escapeHtml(block.author)}</cite>` : ''}
                 </blockquote>`;
 
 const renderImage = (block) => {
@@ -204,28 +208,6 @@ const pageStyles = (design) => `
         margin-right: 10px;
       }
 
-      .blog-quote {
-        border-left: 5px solid;
-        padding: 22px 28px;
-        margin: 26px 0;
-        border-radius: 0 14px 14px 0;
-        font-style: italic;
-      }
-
-      .blog-quote p {
-        font-size: 1.05rem !important;
-        margin-bottom: 10px !important;
-        color: #2d3748;
-      }
-
-      .blog-quote cite {
-        display: block;
-        font-size: 0.9rem;
-        color: #6b7280;
-        font-style: normal;
-        font-weight: 600;
-      }
-
       .blog-figure { margin: 26px 0; }
       .blog-figure img { max-width: 100%; height: auto; }
 
@@ -234,57 +216,66 @@ const pageStyles = (design) => `
         height: 1px;
         background: linear-gradient(90deg, transparent, ${design.themeColor}55, transparent);
         margin: 34px 0;
-      }
-
-      .blog-cover-wrap {
-        border-radius: 18px;
-        overflow: hidden;
-        margin-bottom: 8px;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
-      }
-
-      .blog-cover-wrap img {
-        width: 100%;
-        max-height: 520px;
-        object-fit: cover;
-        display: block;
-      }
-
-      .badge-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 7px 18px;
-        border-radius: 999px;
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: ${design.badgeTextColor};
-        background: ${design.badgeColor};
-        margin-bottom: 14px;
       }`;
 
 // ==================== HTML TEMPLATE ====================
 
-const generateHtml = (blog) => {
+const generateHtml = (blog, extras = {}) => {
   const b = normalizeBlog(blog);
   const design = b.design;
+  const recentPosts = Array.isArray(extras.recentPosts) ? extras.recentPosts : [];
 
+  const formatDateShort = (date) => {
+    const d = new Date(date);
+    const day = d.getDate();
+    const suffix = day % 10 === 1 && day !== 11 ? 'st'
+      : day % 10 === 2 && day !== 12 ? 'nd'
+        : day % 10 === 3 && day !== 13 ? 'rd' : 'th';
+    const month = d.toLocaleDateString('en-US', { month: 'long' });
+    return `${day}${suffix} ${month}, ${d.getFullYear()}`;
+  };
+
+  // Meta line mirrors the reference page: date | author | category + tags in one span
   const metaParts = [];
   if (design.showDate) metaParts.push(`<span><i class="fal fa-calendar-alt"></i><a href="#">${formatDate(b.publishedAt)}</a></span>`);
   if (design.showAuthor) metaParts.push(`<span><i class="fal fa-user-tag"></i>by <a href="#">${escapeHtml(b.author)}</a></span>`);
-  if (design.showCategory && b.category) metaParts.push(`<span><i class="fal fa-folder-open"></i><a href="#">${escapeHtml(b.category)}</a></span>`);
+  if ((design.showCategory && b.category) || b.tags.length) {
+    const catLinks = [
+      ...(design.showCategory && b.category ? [escapeHtml(b.category)] : []),
+      ...b.tags.map((t) => escapeHtml(t))
+    ].map((l) => `<a href="blog.html">${l}</a>`).join('');
+    metaParts.push(`<span><i class="fal fa-folder-open"></i>${catLinks}</span>`);
+  }
 
   const bodyHtml = b.blocks.length
     ? b.blocks.map((block) => renderBlock(block, design)).join('\n')
     : (b.excerpt ? `<p>${escapeHtml(b.excerpt)}</p>` : '');
 
   const tagCloud = b.tags.length
-    ? b.tags.map((t) => `<a href="#">${escapeHtml(t)}</a>`).join('\n')
+    ? b.tags.map((t) => `<a href="#">${escapeHtml(t)}</a>`).join('\n                      ')
     : '';
 
   const shareUrl = `https://www.lilsculpr.com/${b.pageUrl}`;
+
+  // Footer "Our Blogs" recent-post widget (top published posts, excluding current)
+  const recentPostHtml = recentPosts.slice(0, 2).map((p) => {
+    const np = normalizeBlog(p);
+    return `                  <div class="recent-post">
+                    <div class="media-img">
+                      <a href="${escapeHtml(np.pageUrl)}">
+                        <img src="${escapeHtml(np.coverImage || 'assets/img/claymodeling/blog2.webp')}" alt="${escapeHtml(np.title)}" width="80" height="80" loading="lazy" />
+                      </a>
+                    </div>
+                    <div class="media-body">
+                      <div class="recent-post-meta">
+                        <a href="blog.html"><i class="fal fa-calendar-alt"></i> ${formatDateShort(np.publishedAt)}</a>
+                      </div>
+                      <h4 class="post-title">
+                        <a href="${escapeHtml(np.pageUrl)}">${escapeHtml(np.title)}</a>
+                      </h4>
+                    </div>
+                  </div>`;
+  }).join('\n\n');
 
   return `<!doctype html>
 <html class="no-js" lang="en">
@@ -551,7 +542,6 @@ ${pageStyles(design)}
           <h1 class="breadcumb-title">${escapeHtml(b.title)}</h1>
           <ul class="breadcumb-menu">
             <li><a href="index.html">Home</a></li>
-            <li><a href="blog.html">Blog</a></li>
             <li class="active">${escapeHtml(b.title)}</li>
           </ul>
         </div>
@@ -564,8 +554,9 @@ ${pageStyles(design)}
         <div class="row gx-60">
           <div class="">
             <article class="vs-blog blog-single wow fadeInUp" data-wow-delay="0.1s">
-              ${design.showBadge ? `<div class="text-center"><span class="badge-pill">${escapeHtml(design.badgeText)}</span></div>` : ''}
-              ${b.coverImage && design.showImage ? `<div class="blog-cover-wrap"><img src="${escapeHtml(b.coverImage)}" alt="${escapeHtml(b.title)}" /></div>` : ''}
+              ${b.coverImage && design.showImage ? `<div class="blog-img">
+                  <img src="${escapeHtml(b.coverImage)}" alt="${escapeHtml(b.title)}" />
+                </div>` : ''}
               <div class="blog-content">
                 <div class="blog-meta">
                   ${metaParts.join('\n                  ')}
@@ -663,7 +654,15 @@ ${pageStyles(design)}
                 </ul>
               </div>
             </div>
-
+${recentPostHtml ? `
+            <div class="col-xl-auto col-md-6 wow fadeInUp" data-wow-delay="0.1s">
+              <div class="widget footer-widget">
+                <h4 class="widget_title">Our Blogs</h4>
+                <div class="recent-post-wrap">
+${recentPostHtml}
+                </div>
+              </div>
+            </div>` : ''}
             <div class="col-xl-auto col-md-6 wow fadeInUp" data-wow-delay="0.1s">
               <div class="widget footer-widget">
                 <h3 class="widget_title">Contact Us</h3>
@@ -703,6 +702,41 @@ ${pageStyles(design)}
       <div class="whatsapp-tooltip">Tap to Book Free Assessment</div>
     </a>
 
+    <!-- Spinner Popup -->
+    <div class="spinner-popup d-none active" id="spinner-popup">
+      <div class="popup-header">
+        <h2 class="popup-title">Spin &amp; Win Amazing Prizes!</h2>
+        <button class="close-popup" id="close-popup">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <div class="wheel-container">
+        <div class="wheel-wrapper">
+          <div class="pointer"></div>
+          <canvas id="wheel" width="500" height="500"></canvas>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="spin-btn">
+          <i class="fas fa-play-circle"></i> Spin the Wheel
+        </button>
+      </div>
+    </div>
+
+    <!-- Winner Popup -->
+    <div class="winner-popup" id="winner-popup">
+      <h2 class="winner-title"> You Won! </h2>
+      <p class="winner-text" id="winner-text">You won: Free Trial Class</p>
+      <div class="winner-actions">
+        <button class="winner-btn claim-btn" id="claim-btn">Claim Prize</button>
+        <button class="winner-btn close-winner d-none" id="close-winner">
+          Close
+        </button>
+      </div>
+    </div>
+
     <!-- Scripts -->
     <script src="assets/js/jquery-3.5.0.min.js"></script>
     <script src="assets/js/slick.min.js"></script>
@@ -716,6 +750,7 @@ ${pageStyles(design)}
     <script src="assets/js/jquery-ui.min.js"></script>
     <script src="assets/js/wow.min.js"></script>
     <script src="assets/js/ajax-mail.js"></script>
+    <script src="./assets/js/load-popup.js"></script>
     <script src="./assets/js/spinner.js"></script>
     <script src="assets/js/main.min.js"></script>
   </body>
@@ -725,9 +760,9 @@ ${pageStyles(design)}
 
 // ==================== MAIN ====================
 
-const generateAndUpload = async (blog) => {
+const generateAndUpload = async (blog, extras = {}) => {
   const b = normalizeBlog(blog);
-  const html = generateHtml(b);
+  const html = generateHtml(b, extras);
 
   const files = [{ remotePath: b.pageUrl, content: html }];
   const result = await uploadToFTP(files);

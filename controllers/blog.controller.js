@@ -7,6 +7,23 @@ const {
   normalizeBlog
 } = require('../services/blogPageGenerator.service');
 
+// Fetch the latest published posts (for the footer "Our Blogs" widget on the static page)
+const getRecentPosts = async (excludeId) => {
+  try {
+    return await Blog.find({
+      status: 'published',
+      ...(excludeId ? { _id: { $ne: excludeId } } : {})
+    })
+      .sort({ isFeatured: -1, publishedAt: -1 })
+      .limit(2)
+      .select('title slug pageUrl coverImage author category tags blocks metaTitle metaDescription status displayOrder views design publishedAt')
+      .lean();
+  } catch (e) {
+    console.warn('Recent posts fetch skipped:', e.message);
+    return [];
+  }
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const slugify = (str) => String(str || '')
@@ -228,7 +245,7 @@ exports.create = async (req, res) => {
     // Generate & upload the static detail page when publishing
     let pageGeneration = null;
     if (blog.status === 'published') {
-      pageGeneration = await generateAndUpload(blog);
+      pageGeneration = await generateAndUpload(blog, { recentPosts: await getRecentPosts(blog._id) });
       if (pageGeneration.pageFileName) {
         blog.pageUrl = pageGeneration.pageFileName;
         await blog.save();
@@ -301,7 +318,7 @@ exports.update = async (req, res) => {
         }
         existing.pageUrl = '';
       }
-      pageGeneration = await generateAndUpload(existing);
+      pageGeneration = await generateAndUpload(existing, { recentPosts: await getRecentPosts(existing._id) });
       if (pageGeneration.pageFileName) {
         existing.pageUrl = pageGeneration.pageFileName;
         await existing.save();
