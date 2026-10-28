@@ -111,7 +111,7 @@ const studentSchema = new mongoose.Schema({
   // ═══ STATUS FIELDS ═══
   status: {
     type: String,
-    enum: ['active', 'inactive', 'cancelled'],
+    enum: ['active', 'inactive', 'paused', 'cancelled'],
     default: 'active'
   },
   

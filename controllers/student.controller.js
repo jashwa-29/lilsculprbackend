@@ -1,5 +1,6 @@
 const Student = require('../models/student.model');
 const Batch = require('../models/Batch.model');
+const FlexiBatch = require('../models/FlexiBatch.model');
 const path = require('path');
 const fs = require('fs');
 
@@ -648,9 +649,23 @@ exports.updateStudent = async (req, res) => {
       }
     });
 
+    // ─── KEEP FLEXI STUDENT LIFECYCLE IN SYNC ─────────────────────────────
+    if (student.isFlexiBatch && (updates.status === 'paused' || updates.status === 'active')) {
+      student.enrollmentStatus = updates.status;
+    }
+
     // ─── SAVE ──────────────────────────────────────────────────────────────
     await student.save();
     await student.populate('batchId');
+
+    // ─── KEEP LINKED FLEXI-BATCH IN SYNC ──────────────────────────────────
+    if (student.isFlexiBatch && student.flexiBatchId &&
+        (updates.status === 'paused' || updates.status === 'active')) {
+      await FlexiBatch.findByIdAndUpdate(student.flexiBatchId, {
+        status: updates.status,
+        updatedAt: new Date()
+      });
+    }
 
     res.json({
       success: true,

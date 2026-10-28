@@ -61,14 +61,17 @@ exports.setFlexiSchedule = async (req, res) => {
     const resolvedClassType = classType || student.classType || 'offline';
 
     // Find and update, or create if it doesn't exist
+    // NOTE: Do not overwrite status on edit — only set it when creating.
     const flexiBatch = await FlexiBatch.findOneAndUpdate(
       { studentId: studentId },
       {
-        schedule: schedule,
-        classType: resolvedClassType,
-        status: 'active',
-        notes: notes || '',
-        updatedAt: new Date()
+        $set: {
+          schedule: schedule,
+          classType: resolvedClassType,
+          notes: notes || '',
+          updatedAt: new Date()
+        },
+        $setOnInsert: { status: 'active' }
       },
       { upsert: true, new: true }
     );
@@ -91,7 +94,10 @@ exports.setFlexiSchedule = async (req, res) => {
 
     // Update student's classType and mark as flexi
     student.classType = resolvedClassType;
-    student.enrollmentStatus = 'active';
+    // Only reactivate enrollment when the flexi-batch itself is active
+    if (flexiBatch.status === 'active') {
+      student.enrollmentStatus = 'active';
+    }
     student.isFlexiBatch = true;
     student.flexiBatchId = flexiBatch._id;
 
@@ -260,11 +266,16 @@ exports.updateFlexiBatchStatus = async (req, res) => {
     flexiBatch.updatedAt = new Date();
     await flexiBatch.save();
 
-    // Update student status if needed
-    if (status === 'cancelled' || status === 'completed') {
-      await Student.findByIdAndUpdate(flexiBatch.studentId, {
-        enrollmentStatus: status === 'cancelled' ? 'withdrawn' : 'completed'
-      });
+    // Keep the student record in sync with the flexi-batch lifecycle
+    const studentUpdates = {
+      active: { status: 'active', enrollmentStatus: 'active' },
+      paused: { status: 'paused', enrollmentStatus: 'paused' },
+      cancelled: { enrollmentStatus: 'withdrawn' },
+      completed: { enrollmentStatus: 'completed' }
+    }[status];
+
+    if (studentUpdates) {
+      await Student.findByIdAndUpdate(flexiBatch.studentId, studentUpdates);
     }
 
     res.json({
