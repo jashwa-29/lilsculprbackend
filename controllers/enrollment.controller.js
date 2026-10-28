@@ -1031,6 +1031,20 @@ exports.getFeesOverview = async (req, res) => {
       console.warn('⚠️ Auto-billing skipped for overview:', billErr.message);
     }
 
+    // Only active students count toward this month's fee totals.
+    // Flexi students follow their flexi-batch status, so exclude any whose
+    // flexi-batch is paused/completed/cancelled as well.
+    const inactiveFlexiStudentIds = await FlexiBatch.find({ status: { $ne: 'active' } }).distinct('studentId');
+    const activeStudentIds = await Student.find({
+      status: 'active',
+      _id: { $nin: inactiveFlexiStudentIds }
+    }).distinct('_id');
+    const currentMonthFilter = {
+      month: currentMonth,
+      year: currentYear,
+      studentId: { $in: activeStudentIds }
+    };
+
     const [paidFees, pendingFees, monthPaid, monthPending, monthRevenue, monthPendingAmt] = await Promise.all([
       // All-time paid
       FeeRecord.aggregate([
@@ -1043,17 +1057,17 @@ exports.getFeesOverview = async (req, res) => {
         { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
       ]),
       // Current month paid
-      FeeRecord.countDocuments({ month: currentMonth, year: currentYear, status: 'Paid' }),
+      FeeRecord.countDocuments({ ...currentMonthFilter, status: 'Paid' }),
       // Current month pending
-      FeeRecord.countDocuments({ month: currentMonth, year: currentYear, status: 'Pending' }),
+      FeeRecord.countDocuments({ ...currentMonthFilter, status: 'Pending' }),
       // Current month revenue (₹ collected)
       FeeRecord.aggregate([
-        { $match: { month: currentMonth, year: currentYear, status: 'Paid' } },
+        { $match: { ...currentMonthFilter, status: 'Paid' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ]),
       // Current month pending amount (₹ yet to collect)
       FeeRecord.aggregate([
-        { $match: { month: currentMonth, year: currentYear, status: 'Pending' } },
+        { $match: { ...currentMonthFilter, status: 'Pending' } },
         { $group: { _id: null, total: { $sum: '$amount' } } }
       ])
     ]);
